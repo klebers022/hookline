@@ -17,7 +17,13 @@
     "test": "pnpm -r test",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
     "infra:up": "docker compose up -d --wait",
-    "infra:down": "docker compose down"
+    "infra:down": "docker compose down",
+    "db:migrate": "pnpm --filter @hookline/api migrate",
+    "project:create": "pnpm --filter @hookline/api project:create",
+    "dev:api": "pnpm --filter @hookline/api dev",
+    "dev:relay": "pnpm --filter @hookline/worker dev:relay",
+    "dev:deliver": "pnpm --filter @hookline/worker dev:deliver",
+    "dev:receiver": "pnpm --filter @hookline/test-receiver dev"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

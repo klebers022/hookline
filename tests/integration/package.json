@@ -1,0 +1,23 @@
+{
+  "name": "@hookline/integration-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@hookline/api": "workspace:*",
+    "@hookline/shared": "workspace:*",
+    "@hookline/test-receiver": "workspace:*",
+    "@hookline/worker": "workspace:*",
+    "@testcontainers/postgresql": "^12.2.1",
+    "@testcontainers/rabbitmq": "^12.2.1",
+    "@types/node": "^26.6.6",
+    "pino": "^10.4.0",
+    "testcontainers": "^12.2.1",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}
