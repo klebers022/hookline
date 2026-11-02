@@ -57,7 +57,7 @@ export const eventRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (
         );
         await client.query(
           `INSERT INTO outbox (delivery_id, routing_key, payload)
-           SELECT id, $2, jsonb_build_object('delivery_id', id)
+           SELECT id, $2, jsonb_build_object('delivery_id', id, 'attempt', 1)
            FROM unnest($1::uuid[]) AS id`,
           [deliveryIds, DELIVERIES_READY_ROUTING_KEY],
         );
@@ -103,7 +103,8 @@ export const eventRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (
       }
 
       const { rows: deliveries } = await pool.query(
-        `SELECT id, endpoint_id, status, attempt_count, delivered_at, created_at
+        `SELECT id, endpoint_id, status, attempt_count, next_attempt_at,
+                delivered_at, created_at
          FROM deliveries WHERE event_id = $1
          ORDER BY id`,
         [request.params.id],

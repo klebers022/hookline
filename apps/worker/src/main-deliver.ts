@@ -2,6 +2,7 @@ import {
   connectBroker,
   createPool,
   parseEncryptionKey,
+  parseRetryDelays,
   requireEnv,
 } from '@hookline/shared';
 import { pino } from 'pino';
@@ -13,6 +14,7 @@ startDeliveryWorker({
   pool: createPool(requireEnv('DATABASE_URL')),
   broker: connectBroker(requireEnv('RABBITMQ_URL')),
   encryptionKey: parseEncryptionKey(requireEnv('ENCRYPTION_KEY')),
+  retryDelays: parseRetryDelays(process.env.RETRY_DELAYS),
   logger,
 });
 logger.info('Delivery worker started');

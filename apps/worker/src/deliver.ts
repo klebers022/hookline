@@ -1,15 +1,26 @@
 import {
   declareTopology,
+  declareWaitQueues,
+  decideNextStep,
   decryptSecret,
+  DELIVERIES_DEAD_ROUTING_KEY,
   DELIVERIES_READY_QUEUE,
   newId,
+  parseRetryDelays,
+  waitRoutingKey,
   withTransaction,
   type Broker,
+  type NextStep,
   type Pool,
+  type PoolClient,
+  type RetryDelay,
 } from '@hookline/shared';
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
 import type { Logger } from 'pino';
 import { sendWebhook, type SendResult } from './sender.js';
+
+const ERROR_BACKOFF_MS = 1_000;
 
 export interface DeliveryWorkerOptions {
   pool: Pool;
@@ -17,6 +28,8 @@ export interface DeliveryWorkerOptions {
   encryptionKey: Buffer;
   logger: Logger;
   prefetch?: number;
+  retryDelays?: RetryDelay[];
+  maxErrorBackoffMs?: number;
 }
 
 interface DeliveryRow {
@@ -24,6 +37,7 @@ interface DeliveryRow {
   status: string;
   attempt_count: number;
   event_id: string;
+  endpoint_id: string;
   type: string;
   payload: unknown;
   created_at: Date;
@@ -32,11 +46,41 @@ interface DeliveryRow {
   endpoint_status: string;
 }
 
+interface DeliveryMessage {
+  delivery_id: string;
+  attempt: number;
+}
+
 const FINAL_STATUSES = new Set(['succeeded', 'dead']);
 
-function isSuccess({ responseStatus }: SendResult): boolean {
-  return (
-    responseStatus !== null && responseStatus >= 200 && responseStatus < 300
+const DELIVERY_STATUS: Record<NextStep['action'], string> = {
+  succeed: 'succeeded',
+  retry: 'retrying',
+  dead: 'dead',
+  disable_endpoint: 'dead',
+};
+
+function parseMessage(content: Buffer): DeliveryMessage {
+  const message = JSON.parse(content.toString()) as Partial<DeliveryMessage>;
+  if (
+    typeof message.delivery_id !== 'string' ||
+    !Number.isInteger(message.attempt)
+  ) {
+    throw new Error('Unexpected message shape');
+  }
+  return message as DeliveryMessage;
+}
+
+async function enqueue(
+  client: PoolClient,
+  deliveryId: string,
+  routingKey: string,
+  attempt: number,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO outbox (delivery_id, routing_key, payload)
+     VALUES ($1, $2, jsonb_build_object('delivery_id', $1::uuid, 'attempt', $3::int))`,
+    [deliveryId, routingKey, attempt],
   );
 }
 
@@ -46,11 +90,13 @@ export function startDeliveryWorker({
   encryptionKey,
   logger,
   prefetch = 10,
+  retryDelays = parseRetryDelays(),
+  maxErrorBackoffMs = 30_000,
 }: DeliveryWorkerOptions) {
   async function loadDelivery(id: string): Promise<DeliveryRow | undefined> {
     const { rows } = await pool.query<DeliveryRow>(
-      `SELECT d.id, d.status, d.attempt_count, d.event_id, e.type, e.payload,
-              e.created_at, ep.url, ep.secret_encrypted,
+      `SELECT d.id, d.status, d.attempt_count, d.event_id, d.endpoint_id,
+              e.type, e.payload, e.created_at, ep.url, ep.secret_encrypted,
               ep.status AS endpoint_status
        FROM deliveries d
        JOIN events e ON e.id = d.event_id
@@ -61,18 +107,25 @@ export function startDeliveryWorker({
     return rows[0];
   }
 
+  // The attempt and whatever comes next commit together, so a crash can never
+  // record a failure and forget to schedule the following attempt.
   async function recordAttempt(
     delivery: DeliveryRow,
     attemptNumber: number,
     result: SendResult,
   ): Promise<void> {
-    const succeeded = isSuccess(result);
+    const next = decideNextStep(
+      attemptNumber,
+      result.responseStatus,
+      retryDelays,
+    );
     await withTransaction(pool, async (client) => {
-      await client.query(
+      const { rowCount } = await client.query(
         `INSERT INTO delivery_attempts
            (id, delivery_id, attempt_number, started_at, duration_ms,
             response_status, error_code, response_snippet)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (delivery_id, attempt_number) DO NOTHING`,
         [
           newId(),
           delivery.id,
@@ -84,32 +137,84 @@ export function startDeliveryWorker({
           result.responseSnippet,
         ],
       );
-      // Failures are final until retries and the DLQ arrive in phase 2.
+      // A duplicate message running at the same time recorded this attempt.
+      if (!rowCount) {
+        return;
+      }
+
       await client.query(
         `UPDATE deliveries
          SET status = $2,
              attempt_count = $3,
-             delivered_at = CASE WHEN $2 = 'succeeded' THEN now() END
+             delivered_at = CASE WHEN $2 = 'succeeded' THEN now() END,
+             next_attempt_at = now() + $4 * interval '1 millisecond'
          WHERE id = $1`,
-        [delivery.id, succeeded ? 'succeeded' : 'dead', attemptNumber],
+        [
+          delivery.id,
+          DELIVERY_STATUS[next.action],
+          attemptNumber,
+          next.action === 'retry' ? next.delay.ms : null,
+        ],
       );
+
+      if (next.action === 'retry') {
+        await enqueue(
+          client,
+          delivery.id,
+          waitRoutingKey(next.delay),
+          attemptNumber + 1,
+        );
+      } else if (next.action !== 'succeed') {
+        await enqueue(
+          client,
+          delivery.id,
+          DELIVERIES_DEAD_ROUTING_KEY,
+          attemptNumber,
+        );
+      }
+      if (next.action === 'disable_endpoint') {
+        await client.query(
+          `UPDATE endpoints SET status = 'disabled', updated_at = now()
+           WHERE id = $1 AND status = 'active'`,
+          [delivery.endpoint_id],
+        );
+      }
     });
   }
 
-  async function processDelivery(id: string): Promise<void> {
+  async function abandonDelivery(
+    delivery: DeliveryRow,
+    attempt: number,
+  ): Promise<void> {
+    await withTransaction(pool, async (client) => {
+      await client.query(
+        `UPDATE deliveries SET status = 'dead', next_attempt_at = NULL
+         WHERE id = $1`,
+        [delivery.id],
+      );
+      await enqueue(client, delivery.id, DELIVERIES_DEAD_ROUTING_KEY, attempt);
+    });
+  }
+
+  async function processDelivery({
+    delivery_id: id,
+    attempt,
+  }: DeliveryMessage): Promise<void> {
     const delivery = await loadDelivery(id);
     if (!delivery) {
       logger.warn({ deliveryId: id }, 'Delivery not found');
       return;
     }
-    // A duplicate message: the outcome of this delivery is already recorded.
-    if (FINAL_STATUSES.has(delivery.status)) {
+    // A duplicate message: the relay published it twice, or a crash before the
+    // ack made the broker redeliver it. This attempt already has its outcome.
+    if (
+      FINAL_STATUSES.has(delivery.status) ||
+      attempt <= delivery.attempt_count
+    ) {
       return;
     }
     if (delivery.endpoint_status !== 'active') {
-      await pool.query(`UPDATE deliveries SET status = 'dead' WHERE id = $1`, [
-        id,
-      ]);
+      await abandonDelivery(delivery, attempt);
       return;
     }
 
@@ -123,10 +228,11 @@ export function startDeliveryWorker({
         data: delivery.payload,
       }),
     });
-    await recordAttempt(delivery, delivery.attempt_count + 1, result);
+    await recordAttempt(delivery, attempt, result);
     logger.info(
       {
         deliveryId: id,
+        attempt,
         status: result.responseStatus,
         errorCode: result.errorCode,
         durationMs: result.durationMs,
@@ -135,16 +241,15 @@ export function startDeliveryWorker({
     );
   }
 
+  let consecutiveErrors = 0;
+
   async function handleMessage(
     channel: ConfirmChannel,
     message: ConsumeMessage,
   ): Promise<void> {
-    let deliveryId: string;
+    let delivery: DeliveryMessage;
     try {
-      const parsed = JSON.parse(message.content.toString()) as {
-        delivery_id: string;
-      };
-      deliveryId = parsed.delivery_id;
+      delivery = parseMessage(message.content);
     } catch (error) {
       logger.error({ err: error }, 'Discarding malformed message');
       channel.nack(message, false, false);
@@ -152,12 +257,26 @@ export function startDeliveryWorker({
     }
 
     try {
-      await processDelivery(deliveryId);
+      await processDelivery(delivery);
+      consecutiveErrors = 0;
       // Acknowledge only after the commit: a crash before this point makes
       // the broker redeliver the message instead of losing the delivery.
       channel.ack(message);
     } catch (error) {
-      logger.error({ err: error, deliveryId }, 'Failed to process delivery');
+      logger.error(
+        { err: error, deliveryId: delivery.delivery_id },
+        'Failed to process delivery',
+      );
+      // This is an internal failure, such as the database being down, not a
+      // failed delivery, so it spends no attempt. Waiting keeps a long outage
+      // from turning into a tight loop of returned messages.
+      consecutiveErrors += 1;
+      await sleep(
+        Math.min(
+          ERROR_BACKOFF_MS * 2 ** (consecutiveErrors - 1),
+          maxErrorBackoffMs,
+        ),
+      );
       channel.nack(message, false, true);
     }
   }
@@ -166,6 +285,7 @@ export function startDeliveryWorker({
     json: false,
     setup: async (ch: ConfirmChannel) => {
       await declareTopology(ch);
+      await declareWaitQueues(ch, retryDelays);
       await ch.prefetch(prefetch);
       await ch.consume(DELIVERIES_READY_QUEUE, (message) => {
         if (message) {

@@ -13,5 +13,5 @@ Garantir a entrega "pelo menos uma vez". O worker só confirma a mensagem no Rab
 ## Consequências
 
 - Uma falha entre o envio e a confirmação gera um reenvio, em vez de uma perda.
-- O worker descarta mensagens duplicadas de entregas já finalizadas, mas não elimina toda repetição: o destino ainda precisa ser idempotente.
+- O worker descarta mensagens duplicadas de tentativas já registradas, mas não elimina toda repetição: o destino ainda precisa ser idempotente.
 - Isso deve estar documentado para quem integra, porque a deduplicação no destino faz parte do contrato.
