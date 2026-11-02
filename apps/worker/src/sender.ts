@@ -6,7 +6,7 @@ const SNIPPET_BYTES = 1024;
 
 export interface WebhookMessage {
   url: string;
-  secret: string;
+  secrets: string[];
   id: string;
   body: string;
 }
@@ -35,7 +35,7 @@ async function readSnippet(body: AsyncIterable<Buffer>): Promise<string> {
 
 export async function sendWebhook({
   url,
-  secret,
+  secrets,
   id,
   body,
 }: WebhookMessage): Promise<SendResult> {
@@ -54,7 +54,9 @@ export async function sendWebhook({
         'user-agent': 'Hookline/0.1',
         'webhook-id': id,
         'webhook-timestamp': String(timestamp),
-        'webhook-signature': signWebhook({ secret, id, timestamp, body }),
+        'webhook-signature': secrets
+          .map((secret) => signWebhook({ secret, id, timestamp, body }))
+          .join(' '),
       },
       body,
       signal: AbortSignal.timeout(TIMEOUT_MS),

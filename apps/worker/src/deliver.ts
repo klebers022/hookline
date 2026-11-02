@@ -43,6 +43,7 @@ interface DeliveryRow {
   created_at: Date;
   url: string;
   secret_encrypted: string;
+  previous_secret_encrypted: string | null;
   endpoint_status: string;
 }
 
@@ -97,6 +98,9 @@ export function startDeliveryWorker({
     const { rows } = await pool.query<DeliveryRow>(
       `SELECT d.id, d.status, d.attempt_count, d.event_id, d.endpoint_id,
               e.type, e.payload, e.created_at, ep.url, ep.secret_encrypted,
+              CASE WHEN ep.previous_secret_expires_at > now()
+                THEN ep.previous_secret_encrypted
+              END AS previous_secret_encrypted,
               ep.status AS endpoint_status
        FROM deliveries d
        JOIN events e ON e.id = d.event_id
@@ -218,9 +222,17 @@ export function startDeliveryWorker({
       return;
     }
 
+    const encryptedSecrets = [
+      delivery.secret_encrypted,
+      ...(delivery.previous_secret_encrypted
+        ? [delivery.previous_secret_encrypted]
+        : []),
+    ];
     const result = await sendWebhook({
       url: delivery.url,
-      secret: decryptSecret(delivery.secret_encrypted, encryptionKey),
+      secrets: encryptedSecrets.map((secret) =>
+        decryptSecret(secret, encryptionKey),
+      ),
       id: delivery.event_id,
       body: JSON.stringify({
         type: delivery.type,
