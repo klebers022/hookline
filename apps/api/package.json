@@ -1,0 +1,29 @@
+{
+  "name": "@hookline/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fastify/swagger": "^9.9.3",
+    "@fastify/swagger-ui": "^6.1.2",
+    "@fastify/type-provider-typebox": "^6.3.0",
+    "@hookline/shared": "workspace:*",
+    "fastify": "^5.12.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3"
+  },
+  "exports": [
+    [
+      "./src/index.ts"
+    ]
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
+    "migrate": "tsx --env-file-if-exists=../../.env src/scripts/migrate.ts",
+    "project:create": "tsx --env-file-if-exists=../../.env src/scripts/create-project.ts"
+  }
+}
