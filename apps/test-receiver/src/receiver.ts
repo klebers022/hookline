@@ -20,6 +20,7 @@ interface Behavior {
   secret?: string;
   status: number;
   delay_ms: number;
+  fail_next: number;
 }
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -41,7 +42,7 @@ function sendJson(
 
 export async function startReceiver(port = 0, host = '127.0.0.1') {
   const received: ReceivedWebhook[] = [];
-  let behavior: Behavior = { status: 200, delay_ms: 0 };
+  let behavior: Behavior = { status: 200, delay_ms: 0, fail_next: 0 };
 
   function checkSignature(
     request: IncomingMessage,
@@ -73,8 +74,12 @@ export async function startReceiver(port = 0, host = '127.0.0.1') {
       signature_valid: checkSignature(request, body),
       received_at: new Date().toISOString(),
     });
+    const failing = behavior.fail_next > 0;
+    if (failing) {
+      behavior.fail_next -= 1;
+    }
     await sleep(behavior.delay_ms);
-    sendJson(response, behavior.status, { received: true });
+    sendJson(response, failing ? 500 : behavior.status, { received: true });
   }
 
   const server = createServer((request, response) => {
@@ -88,6 +93,7 @@ export async function startReceiver(port = 0, host = '127.0.0.1') {
           return sendJson(response, 200, {
             status: behavior.status,
             delay_ms: behavior.delay_ms,
+            fail_next: behavior.fail_next,
           });
         case 'GET /received':
           return sendJson(response, 200, { count: received.length, received });

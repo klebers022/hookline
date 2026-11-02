@@ -2,7 +2,7 @@
 
 Entrega confiável de webhooks: publique um evento uma vez, e o Hookline o entrega pelo menos uma vez ou o move para uma dead-letter queue, com histórico auditável de cada tentativa.
 
-> **Status:** início do desenvolvimento. O caminho feliz funciona: um evento é entregue, assinado e registrado. O retry e as proteções necessárias para URLs de terceiros, como o bloqueio de SSRF, ainda não existem.
+> **Status:** início do desenvolvimento. Os eventos são entregues, assinados, registrados e reenviados em caso de falha, e as entregas esgotadas vão para uma dead-letter queue. As proteções necessárias para URLs de terceiros, como o bloqueio de SSRF, ainda não existem.
 
 [Read in English](README.md)
 
@@ -61,6 +61,19 @@ curl -X POST http://localhost:3000/v1/events -H "Authorization: Bearer <API_KEY>
 ```
 
 Veja o que chegou em <http://localhost:4000/received> e o histórico em `GET /v1/events/:id` e `GET /v1/deliveries/:id`.
+
+## Política de entrega
+
+Uma entrega tem até 6 tentativas: uma imediata e outras depois de 1 minuto, 5 minutos, 30 minutos, 2 horas e 6 horas. Qualquer resposta `2xx` é sucesso. Qualquer outra resposta, erro de rede ou timeout de 10 segundos agenda a próxima tentativa. Redirects não são seguidos.
+
+- **`410 Gone`:** desativa o endpoint e encerra a entrega.
+- **Endpoint desativado ou removido:** encerra a entrega quando chega a hora da próxima tentativa.
+- **Entrega esgotada:** recebe o status `dead` e uma mensagem em `deliveries.dlq`.
+- **Reenvio manual:** `POST /v1/deliveries/:id/retry` agenda mais uma tentativa para uma entrega `dead` cujo endpoint esteja ativo.
+
+A entrega é "pelo menos uma vez", então um endpoint pode receber o mesmo evento mais de uma vez. Use o header `webhook-id`, que não muda entre as tentativas, para descartar repetições.
+
+`RETRY_DELAYS` muda o calendário, por exemplo `2s,2s,2s,2s,2s` para um teste local rápido.
 
 ## Decisões de arquitetura
 

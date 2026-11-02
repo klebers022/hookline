@@ -10,11 +10,22 @@ export { newId } from './ids.js';
 export {
   connectBroker,
   declareTopology,
+  declareWaitQueues,
+  DELIVERIES_DEAD_ROUTING_KEY,
+  DELIVERIES_DLQ_QUEUE,
   DELIVERIES_EXCHANGE,
   DELIVERIES_READY_QUEUE,
   DELIVERIES_READY_ROUTING_KEY,
+  waitQueueName,
+  waitRoutingKey,
   type Broker,
 } from './mq/topology.js';
+export {
+  decideNextStep,
+  parseRetryDelays,
+  type NextStep,
+  type RetryDelay,
+} from './retry-policy.js';
 export {
   generateApiKey,
   hashApiKey,
