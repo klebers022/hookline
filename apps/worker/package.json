@@ -16,15 +16,18 @@
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
   },
-  "exports": [
-    [
-      "./src/index.ts"
-    ]
-  ],
+  "exports": {
+    ".": {
+      "@hookline/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
-    "dev:relay": "tsx watch --env-file-if-exists=../../.env src/main-relay.ts",
-    "dev:deliver": "tsx watch --env-file-if-exists=../../.env src/main-deliver.ts"
+    "dev:relay": "tsx watch --conditions=@hookline/source --env-file-if-exists=../../.env src/main-relay.ts",
+    "dev:deliver": "tsx watch --conditions=@hookline/source --env-file-if-exists=../../.env src/main-deliver.ts"
   }
 }

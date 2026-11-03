@@ -107,6 +107,12 @@ Ao receber `SIGINT` ou `SIGTERM`, cada processo termina o trabalho em andamento 
 
 Um segundo sinal, ou 30 segundos sem terminar, encerra o processo na hora.
 
+## Build de produção
+
+`pnpm build` compila cada pacote para `dist/`, e `node apps/worker/dist/main-deliver.js` roda um processo sem `tsx`. Cada pacote exporta por padrão o `dist/` compilado e, sob a condição `@hookline/source`, o código TypeScript, usado pelos scripts `dev`, pela checagem de tipos e pelos testes. Assim, o desenvolvimento não precisa de build.
+
+`pnpm db:migrate` lê `db/migrations` do repositório. Defina `MIGRATIONS_DIR` para ler de outra pasta.
+
 ## Decisões de arquitetura
 
 Veja [docs/adr](docs/adr).
