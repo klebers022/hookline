@@ -46,6 +46,7 @@ export interface DeliveryWorkerOptions {
   lookup?: typeof dnsLookup;
   circuitBreaker?: CircuitBreakerOptions;
   endpointRateLimitPerSecond?: number;
+  shutdownTimeoutMs?: number;
 }
 
 interface DeliveryRow {
@@ -114,6 +115,7 @@ export function startDeliveryWorker({
   lookup,
   circuitBreaker = { failureThreshold: 5, openMs: 300_000 },
   endpointRateLimitPerSecond = 50,
+  shutdownTimeoutMs = 15_000,
 }: DeliveryWorkerOptions) {
   const targetPolicy = { allowPrivateTargets };
   const waitDelays = [...retryDelays, THROTTLE_DELAY];
@@ -380,36 +382,98 @@ export function startDeliveryWorker({
       // failed delivery, so it spends no attempt. Waiting keeps a long outage
       // from turning into a tight loop of returned messages.
       consecutiveErrors += 1;
-      await sleep(
-        Math.min(
-          ERROR_BACKOFF_MS * 2 ** (consecutiveErrors - 1),
-          maxErrorBackoffMs,
-        ),
-      );
+      try {
+        await sleep(
+          Math.min(
+            ERROR_BACKOFF_MS * 2 ** (consecutiveErrors - 1),
+            maxErrorBackoffMs,
+          ),
+          undefined,
+          { signal: stopping.signal },
+        );
+      } catch {
+        // Stopping cuts the wait short; the message goes back either way.
+      }
       channel.nack(message, false, true);
     }
   }
 
+  const stopping = new AbortController();
+  const inFlight = new Set<Promise<void>>();
+  let consumer: { channel: ConfirmChannel; tag: string } | undefined;
+  let settingUp: Promise<void> | undefined;
+
+  async function setup(ch: ConfirmChannel): Promise<void> {
+    await declareTopology(ch);
+    await declareWaitQueues(ch, waitDelays);
+    // A reconnection while stopping must not start consuming again.
+    if (stopping.signal.aborted) {
+      return;
+    }
+    await ch.prefetch(prefetch);
+    const { consumerTag } = await ch.consume(
+      DELIVERIES_READY_QUEUE,
+      (message) => {
+        if (!message) {
+          return;
+        }
+        const task = handleMessage(ch, message)
+          .catch((error: unknown) => {
+            logger.error({ err: error }, 'Failed to settle message');
+          })
+          .finally(() => inFlight.delete(task));
+        inFlight.add(task);
+      },
+    );
+    consumer = { channel: ch, tag: consumerTag };
+  }
+
   const channel = broker.createChannel({
     json: false,
-    setup: async (ch: ConfirmChannel) => {
-      await declareTopology(ch);
-      await declareWaitQueues(ch, waitDelays);
-      await ch.prefetch(prefetch);
-      await ch.consume(DELIVERIES_READY_QUEUE, (message) => {
-        if (message) {
-          handleMessage(ch, message).catch((error: unknown) => {
-            logger.error({ err: error }, 'Failed to settle message');
-          });
-        }
-      });
+    setup: (ch: ConfirmChannel) => {
+      settingUp = setup(ch);
+      return settingUp;
     },
   });
 
   return {
+    // Stops taking messages, then lets the ones in progress finish, so a
+    // deploy does not cut a delivery between the request and its record.
+    // Whatever is still running at the deadline is redelivered later, and
+    // the duplicate check keeps that from repeating a recorded attempt.
     async stop(): Promise<void> {
+      if (stopping.signal.aborted) {
+        return;
+      }
+      stopping.abort();
+      // Closing the channel in the middle of the setup would leave its
+      // pending replies unanswered.
+      await settingUp?.catch(() => {});
+      try {
+        await consumer?.channel.cancel(consumer.tag);
+      } catch {
+        // The channel is already gone, and so are its messages.
+      }
+
+      const finished = await Promise.race([
+        Promise.allSettled([...inFlight]).then(() => true),
+        sleep(shutdownTimeoutMs, false, { ref: false }),
+      ]);
+      if (!finished) {
+        logger.warn(
+          { inFlight: inFlight.size },
+          'Stopped before every delivery finished',
+        );
+      }
+
       await channel.close();
-      await dispatcher.close();
+      // Closing the dispatcher waits for open requests, so after the
+      // deadline it is left to finish in the background.
+      if (finished) {
+        await dispatcher.close();
+      } else {
+        dispatcher.close().catch(() => {});
+      }
     },
   };
 }

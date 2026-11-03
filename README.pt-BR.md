@@ -2,7 +2,7 @@
 
 Entrega confiável de webhooks: publique um evento uma vez, e o Hookline o entrega pelo menos uma vez ou o move para uma dead-letter queue, com histórico auditável de cada tentativa.
 
-> **Status:** início do desenvolvimento. Os eventos são entregues, assinados, registrados e reenviados em caso de falha, e as entregas esgotadas vão para uma dead-letter queue. As URLs dos endpoints são protegidas contra SSRF, e um endpoint com falha ou sobrecarga não atrasa os outros. O encerramento gracioso ainda não existe.
+> **Status:** início do desenvolvimento. Os eventos são entregues, assinados, registrados e reenviados em caso de falha, e as entregas esgotadas vão para uma dead-letter queue. As URLs dos endpoints são protegidas contra SSRF, um endpoint com falha ou sobrecarga não atrasa os outros, e os processos encerram sem interromper entregas. Imagens de contêiner, observabilidade e um painel vêm a seguir.
 
 [Read in English](README.md)
 
@@ -96,6 +96,16 @@ O Hookline chama URLs escolhidas pelos clientes, então bloqueia pedidos para en
 - **Em cada conexão:** o worker confere de novo e se conecta ao endereço que conferiu, então uma resposta de DNS que mude depois não alcança um endereço interno. Uma tentativa bloqueada fica registrada com o erro `SSRF_BLOCKED`.
 
 `ALLOW_PRIVATE_TARGETS=true` desliga essa proteção, para o desenvolvimento local usar o receptor de teste em `http://127.0.0.1`. Ela fica desligada se não for definida e deve continuar assim onde terceiros podem cadastrar endpoints.
+
+## Encerramento
+
+Ao receber `SIGINT` ou `SIGTERM`, cada processo termina o trabalho em andamento antes de sair:
+
+- **API:** deixa de aceitar conexões e responde os pedidos em andamento.
+- **Relay:** termina o lote que está publicando.
+- **Worker de entrega:** deixa de pegar mensagens e espera até 15 segundos pelas entregas em andamento. As mensagens que ainda estiverem em execução voltam para a fila, e a checagem de duplicatas impede que uma tentativa já registrada se repita.
+
+Um segundo sinal, ou 30 segundos sem terminar, encerra o processo na hora.
 
 ## Decisões de arquitetura
 

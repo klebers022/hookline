@@ -8,6 +8,11 @@ export {
 } from './db/pool.js';
 export { newId } from './ids.js';
 export {
+  onShutdown,
+  type ShutdownOptions,
+  type ShutdownTarget,
+} from './shutdown.js';
+export {
   connectBroker,
   declareTopology,
   declareWaitQueues,
