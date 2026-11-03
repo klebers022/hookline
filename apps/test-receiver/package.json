@@ -11,13 +11,16 @@
     "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
-  "exports": [
-    [
-      "./src/index.ts"
-    ]
-  ],
+  "exports": {
+    ".": {
+      "@hookline/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "dev": "tsx watch src/main.ts"
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch --conditions=@hookline/source src/main.ts"
   }
 }

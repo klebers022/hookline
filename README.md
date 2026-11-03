@@ -107,6 +107,12 @@ On `SIGINT` or `SIGTERM`, each process finishes its work in progress before exit
 
 A second signal, or 30 seconds without finishing, ends the process at once.
 
+## Production build
+
+`pnpm build` compiles every package to `dist/`, and `node apps/worker/dist/main-deliver.js` runs a process without `tsx`. Each package exports its compiled `dist/` by default and its TypeScript source under the `@hookline/source` condition, which the `dev` scripts, the type checker, and the tests use, so development needs no build.
+
+`pnpm db:migrate` reads `db/migrations` from the repository. Set `MIGRATIONS_DIR` to read them from elsewhere.
+
 ## Architecture decisions
 
 See [docs/adr](docs/adr).
