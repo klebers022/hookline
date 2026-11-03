@@ -2,7 +2,7 @@
 
 Reliable webhook delivery: publish an event once, and Hookline delivers it at least once or moves it to a dead-letter queue, with an auditable history of every attempt.
 
-> **Status:** early development. Events are delivered, signed, recorded, and retried, and exhausted deliveries go to a dead-letter queue. Endpoint URLs are protected against SSRF, and a failing or overloaded endpoint does not hold back the others. Graceful shutdown is not implemented yet.
+> **Status:** early development. Events are delivered, signed, recorded, and retried, and exhausted deliveries go to a dead-letter queue. Endpoint URLs are protected against SSRF, a failing or overloaded endpoint does not hold back the others, and processes shut down without cutting deliveries short. Container images, observability, and a dashboard come next.
 
 [Leia em português](README.pt-BR.md)
 
@@ -96,6 +96,16 @@ Hookline calls URLs chosen by its clients, so it blocks requests to internal add
 - **On every connection:** the worker checks again and connects to the address it checked, so a DNS answer that changes later cannot reach an internal address. A blocked attempt is recorded with the `SSRF_BLOCKED` error.
 
 `ALLOW_PRIVATE_TARGETS=true` turns this off, so local development can use the test receiver at `http://127.0.0.1`. It is off unless set, and must stay off wherever third parties can register endpoints.
+
+## Shutdown
+
+On `SIGINT` or `SIGTERM`, each process finishes its work in progress before exiting:
+
+- **API:** stops accepting connections and answers the requests in progress.
+- **Relay:** finishes the batch it is publishing.
+- **Delivery worker:** stops taking messages and waits up to 15 seconds for the deliveries in progress. Messages still running at that point return to the queue, and the duplicate check keeps a recorded attempt from repeating.
+
+A second signal, or 30 seconds without finishing, ends the process at once.
 
 ## Architecture decisions
 
