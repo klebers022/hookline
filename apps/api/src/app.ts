@@ -2,7 +2,7 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import type { Pool } from '@hookline/shared';
+import type { Pool, ResolveHost } from '@hookline/shared';
 import Fastify, { type FastifyError } from 'fastify';
 import { createAuthHook } from './auth.js';
 import { ProblemError } from './errors.js';
@@ -17,6 +17,8 @@ export interface AppOptions {
   encryptionKey: Buffer;
   logger?: boolean;
   rateLimitPerMinute?: number;
+  allowPrivateTargets?: boolean;
+  resolveHost?: ResolveHost;
 }
 
 export async function buildApp({
@@ -24,6 +26,8 @@ export async function buildApp({
   encryptionKey,
   logger = false,
   rateLimitPerMinute = 6_000,
+  allowPrivateTargets = false,
+  resolveHost,
 }: AppOptions) {
   const app = Fastify({
     logger,
@@ -103,7 +107,12 @@ export async function buildApp({
             `Rate limit exceeded, retry in ${after}`,
           ),
       });
-      await v1.register(endpointRoutes, { pool, encryptionKey });
+      await v1.register(endpointRoutes, {
+        pool,
+        encryptionKey,
+        targetPolicy: { allowPrivateTargets },
+        ...(resolveHost && { resolveHost }),
+      });
       await v1.register(eventRoutes, { pool });
       await v1.register(deliveryRoutes, { pool });
     },

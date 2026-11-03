@@ -1,4 +1,5 @@
 import {
+  createGuardedLookup,
   declareTopology,
   declareWaitQueues,
   decideNextStep,
@@ -15,9 +16,11 @@ import {
   type PoolClient,
   type RetryDelay,
 } from '@hookline/shared';
+import type { lookup as dnsLookup } from 'node:dns';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
 import type { Logger } from 'pino';
+import { Agent } from 'undici';
 import { sendWebhook, type SendResult } from './sender.js';
 
 const ERROR_BACKOFF_MS = 1_000;
@@ -30,6 +33,8 @@ export interface DeliveryWorkerOptions {
   prefetch?: number;
   retryDelays?: RetryDelay[];
   maxErrorBackoffMs?: number;
+  allowPrivateTargets?: boolean;
+  lookup?: typeof dnsLookup;
 }
 
 interface DeliveryRow {
@@ -93,7 +98,16 @@ export function startDeliveryWorker({
   prefetch = 10,
   retryDelays = parseRetryDelays(),
   maxErrorBackoffMs = 30_000,
+  allowPrivateTargets = false,
+  lookup,
 }: DeliveryWorkerOptions) {
+  const targetPolicy = { allowPrivateTargets };
+  const dispatcher = new Agent(
+    allowPrivateTargets
+      ? {}
+      : { connect: { lookup: createGuardedLookup(lookup) } },
+  );
+
   async function loadDelivery(id: string): Promise<DeliveryRow | undefined> {
     const { rows } = await pool.query<DeliveryRow>(
       `SELECT d.id, d.status, d.attempt_count, d.event_id, d.endpoint_id,
@@ -228,18 +242,21 @@ export function startDeliveryWorker({
         ? [delivery.previous_secret_encrypted]
         : []),
     ];
-    const result = await sendWebhook({
-      url: delivery.url,
-      secrets: encryptedSecrets.map((secret) =>
-        decryptSecret(secret, encryptionKey),
-      ),
-      id: delivery.event_id,
-      body: JSON.stringify({
-        type: delivery.type,
-        timestamp: delivery.created_at.toISOString(),
-        data: delivery.payload,
-      }),
-    });
+    const result = await sendWebhook(
+      {
+        url: delivery.url,
+        secrets: encryptedSecrets.map((secret) =>
+          decryptSecret(secret, encryptionKey),
+        ),
+        id: delivery.event_id,
+        body: JSON.stringify({
+          type: delivery.type,
+          timestamp: delivery.created_at.toISOString(),
+          data: delivery.payload,
+        }),
+      },
+      { dispatcher, targetPolicy },
+    );
     await recordAttempt(delivery, attempt, result);
     logger.info(
       {
@@ -312,6 +329,7 @@ export function startDeliveryWorker({
   return {
     async stop(): Promise<void> {
       await channel.close();
+      await dispatcher.close();
     },
   };
 }

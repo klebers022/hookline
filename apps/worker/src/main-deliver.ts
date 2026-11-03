@@ -15,6 +15,7 @@ startDeliveryWorker({
   broker: connectBroker(requireEnv('RABBITMQ_URL')),
   encryptionKey: parseEncryptionKey(requireEnv('ENCRYPTION_KEY')),
   retryDelays: parseRetryDelays(process.env.RETRY_DELAYS),
+  allowPrivateTargets: process.env.ALLOW_PRIVATE_TARGETS === 'true',
   logger,
 });
 logger.info('Delivery worker started');

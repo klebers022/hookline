@@ -6,6 +6,7 @@ const app = await buildApp({
   pool,
   encryptionKey: parseEncryptionKey(requireEnv('ENCRYPTION_KEY')),
   logger: true,
+  allowPrivateTargets: process.env.ALLOW_PRIVATE_TARGETS === 'true',
   ...(process.env.RATE_LIMIT_PER_MINUTE && {
     rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE),
   }),
