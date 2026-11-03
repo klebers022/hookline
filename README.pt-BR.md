@@ -133,6 +133,16 @@ São três imagens, todas rodando com o usuário sem privilégios `node` e com o
 
 Crie um projeto na stack em execução com `docker compose --profile app run --rm api node dist/scripts/create-project.js <nome>`.
 
+## Imagens publicadas
+
+Todo merge na `main` publica as três imagens para `linux/amd64` e `linux/arm64`, com as tags `sha-<commit>` e `main`, e uma tag `v*` acrescenta a versão:
+
+```sh
+docker pull ghcr.io/klebers022/hookline-api:main
+```
+
+Antes de publicar, o Trivy varre cada imagem e falha com vulnerabilidade crítica ou alta que tenha correção. Os pull requests rodam a mesma varredura sem publicar, e o relatório completo fica na aba Security do repositório. O Dependabot mantém atualizados o digest da imagem base, as GitHub Actions e os pacotes npm.
+
 ## Decisões de arquitetura
 
 Veja [docs/adr](docs/adr).
