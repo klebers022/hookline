@@ -1,5 +1,29 @@
 name: hookline
 
+# The app services run only with the "app" profile (pnpm stack:up), from
+# images built by the Dockerfile. Without it, only the infrastructure starts,
+# for the pnpm dev:* scripts.
+x-app-env: &app-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-hookline}:${POSTGRES_PASSWORD:-hookline}@postgres:5432/${POSTGRES_DB:-hookline}
+  RABBITMQ_URL: amqp://${RABBITMQ_USER:-hookline}:${RABBITMQ_PASSWORD:-hookline}@rabbitmq:5672
+  # Development only, the same key as .env.example.
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:-R/4NcjA3LApFWpimRkDtKcOD8JvYI0CMF2Q5RzJIyuA=}
+  RETRY_DELAYS: ${RETRY_DELAYS:-1m,5m,30m,2h,6h}
+  # Lets endpoints point at the test receiver inside this network. Local only.
+  ALLOW_PRIVATE_TARGETS: 'true'
+
+x-api-image: &api-image
+  image: hookline-api:${HOOKLINE_TAG:-local}
+  build: { context: ., target: api }
+
+x-worker-image: &worker-image
+  image: hookline-worker:${HOOKLINE_TAG:-local}
+  build: { context: ., target: worker }
+
+x-after-migrate: &after-migrate
+  migrate: { condition: service_completed_successfully }
+  rabbitmq: { condition: service_healthy }
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -33,6 +57,56 @@ services:
       timeout: 10s
       retries: 12
       start_period: 20s
+
+  migrate:
+    <<: *api-image
+    profiles: [app]
+    command: ['node', 'dist/scripts/migrate.js']
+    environment: *app-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *api-image
+    profiles: [app]
+    environment: *app-env
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on: *after-migrate
+    # Each process waits up to 30 seconds for its work in progress, and
+    # Docker's default of 10 would kill it first.
+    stop_grace_period: 35s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/readyz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  relay:
+    <<: *worker-image
+    profiles: [app]
+    command: ['node', '--enable-source-maps', 'dist/main-relay.js']
+    environment: *app-env
+    depends_on: *after-migrate
+    stop_grace_period: 35s
+
+  deliver:
+    <<: *worker-image
+    profiles: [app]
+    environment: *app-env
+    depends_on: *after-migrate
+    stop_grace_period: 35s
+
+  test-receiver:
+    image: hookline-test-receiver:${HOOKLINE_TAG:-local}
+    build: { context: ., target: test-receiver }
+    profiles: [app]
+    ports:
+      - '127.0.0.1:4000:4000'
 
 volumes:
   postgres-data:
