@@ -25,12 +25,17 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
+  # Builds the images and runs the whole stack in containers, end to end.
   infra:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose up -d --wait
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: docker compose --profile app up -d --build --wait
+      - run: node scripts/smoke.mjs
       - if: failure()
-        run: docker compose logs
+        run: docker compose --profile app logs
       - if: always()
-        run: docker compose down --volumes
+        run: docker compose --profile app down --volumes

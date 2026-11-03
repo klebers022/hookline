@@ -113,6 +113,26 @@ A second signal, or 30 seconds without finishing, ends the process at once.
 
 `pnpm db:migrate` reads `db/migrations` from the repository. Set `MIGRATIONS_DIR` to read them from elsewhere.
 
+## Running in containers
+
+```sh
+pnpm stack:up
+pnpm stack:smoke
+pnpm stack:down
+```
+
+`pnpm stack:up` builds the images from the `Dockerfile` and starts the whole stack: migrations, API at <http://localhost:3000>, relay, delivery worker and test receiver at <http://localhost:4000>, which endpoints reach as `http://test-receiver:4000/hooks`. It uses the same ports as the `pnpm dev:*` scripts, so run one or the other. `pnpm stack:smoke` publishes an event end to end and stops the delivery worker during a slow delivery to check that the delivery is still recorded. CI runs the same check on every pull request.
+
+There are three images, each running as the unprivileged `node` user with `node` as process 1:
+
+| Image                    | Command                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `hookline-api`           | `node dist/server.js` by default; also `node dist/scripts/migrate.js` and `node dist/scripts/create-project.js <name>` |
+| `hookline-worker`        | `node dist/main-deliver.js` by default; `node dist/main-relay.js` for the relay                                        |
+| `hookline-test-receiver` | `node dist/main.js`                                                                                                    |
+
+Create a project in the running stack with `docker compose --profile app run --rm api node dist/scripts/create-project.js <name>`.
+
 ## Architecture decisions
 
 See [docs/adr](docs/adr).

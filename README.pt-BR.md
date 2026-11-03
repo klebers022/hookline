@@ -113,6 +113,26 @@ Um segundo sinal, ou 30 segundos sem terminar, encerra o processo na hora.
 
 `pnpm db:migrate` lê `db/migrations` do repositório. Defina `MIGRATIONS_DIR` para ler de outra pasta.
 
+## Rodando em contêineres
+
+```sh
+pnpm stack:up
+pnpm stack:smoke
+pnpm stack:down
+```
+
+`pnpm stack:up` constrói as imagens a partir do `Dockerfile` e sobe a stack inteira: migrações, API em <http://localhost:3000>, relay, worker de entrega e receptor de teste em <http://localhost:4000>, que os endpoints acessam como `http://test-receiver:4000/hooks`. Usa as mesmas portas dos scripts `pnpm dev:*`, então rode um ou outro. `pnpm stack:smoke` publica um evento de ponta a ponta e para o worker de entrega durante uma entrega lenta, para conferir que ela ainda é registrada. O CI roda a mesma checagem em todo pull request.
+
+São três imagens, todas rodando com o usuário sem privilégios `node` e com o `node` como processo 1:
+
+| Imagem                   | Comando                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `hookline-api`           | `node dist/server.js` por padrão; também `node dist/scripts/migrate.js` e `node dist/scripts/create-project.js <nome>` |
+| `hookline-worker`        | `node dist/main-deliver.js` por padrão; `node dist/main-relay.js` para o relay                                         |
+| `hookline-test-receiver` | `node dist/main.js`                                                                                                    |
+
+Crie um projeto na stack em execução com `docker compose --profile app run --rm api node dist/scripts/create-project.js <nome>`.
+
 ## Decisões de arquitetura
 
 Veja [docs/adr](docs/adr).

@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist",
+    "!dist/**/*.d.ts"
+  ],
   "dependencies": {
     "@fastify/rate-limit": "^11.2.1",
     "@fastify/swagger": "^9.9.3",
