@@ -53,7 +53,11 @@ describe('delivery retries', () => {
   }
 
   beforeAll(async () => {
-    h = await startHarness('1s,1s,1s,1s,1s');
+    // With 1-second waits, six failures in a row would open the circuit
+    // breaker, which is tested on its own.
+    h = await startHarness('1s,1s,1s,1s,1s', {
+      circuitBreaker: { failureThreshold: 100, openMs: 1_000 },
+    });
   });
 
   afterAll(async () => {

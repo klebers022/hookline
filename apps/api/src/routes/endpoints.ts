@@ -15,7 +15,8 @@ import {
 import { notFound, ProblemError } from '../errors.js';
 import { PaginationQuery, toPage } from '../pagination.js';
 
-const PUBLIC_COLUMNS = 'id, url, event_types, status, created_at, updated_at';
+const PUBLIC_COLUMNS = `id, url, event_types, status, consecutive_failures,
+  circuit_open_until, created_at, updated_at`;
 
 const WebhookUrl = Type.String({ format: 'uri', maxLength: 2048 });
 const EventTypes = Type.Array(Type.String({ minLength: 1, maxLength: 255 }), {
@@ -127,11 +128,21 @@ export const endpointRoutes: FastifyPluginAsyncTypebox<{
         await assertWebhookUrl(url);
       }
 
+      // Activating the endpoint or changing its URL suggests the problem was
+      // fixed, so it closes the circuit and the next attempt goes through.
       const { rows } = await pool.query(
         `UPDATE endpoints
          SET url = COALESCE($3, url),
              event_types = COALESCE($4, event_types),
              status = COALESCE($5, status),
+             consecutive_failures = CASE
+               WHEN $3::text IS NOT NULL OR $5::text = 'active' THEN 0
+               ELSE consecutive_failures
+             END,
+             circuit_open_until = CASE
+               WHEN $3::text IS NOT NULL OR $5::text = 'active' THEN NULL
+               ELSE circuit_open_until
+             END,
              updated_at = now()
          WHERE id = $1 AND project_id = $2 AND status <> 'deleted'
          RETURNING ${PUBLIC_COLUMNS}`,

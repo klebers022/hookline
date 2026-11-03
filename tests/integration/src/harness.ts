@@ -20,7 +20,12 @@ type Method = 'GET' | 'POST' | 'PATCH';
 
 export type Harness = Awaited<ReturnType<typeof startHarness>>;
 
-export async function startHarness(retrySchedule?: string) {
+type WorkerOptions = Partial<Parameters<typeof startDeliveryWorker>[0]>;
+
+export async function startHarness(
+  retrySchedule?: string,
+  workerDefaults: WorkerOptions = {},
+) {
   const [postgres, rabbit] = await Promise.all([
     new PostgreSqlContainer('postgres:17-alpine').start(),
     new RabbitMQContainer('rabbitmq:4.1-management-alpine').start(),
@@ -46,9 +51,7 @@ export async function startHarness(retrySchedule?: string) {
     return startRelay({ pool, broker, logger, pollIntervalMs: 50 });
   }
 
-  function newWorker(
-    options: Partial<Parameters<typeof startDeliveryWorker>[0]> = {},
-  ) {
+  function newWorker(options: WorkerOptions = {}) {
     return startDeliveryWorker({
       pool,
       broker,
@@ -56,6 +59,7 @@ export async function startHarness(retrySchedule?: string) {
       logger,
       retryDelays,
       allowPrivateTargets: true,
+      ...workerDefaults,
       ...options,
     });
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideNextStep, parseRetryDelays } from './retry-policy.js';
+import { decideNextStep, parseRetryDelays, pickDelay } from './retry-policy.js';
 
 const delays = parseRetryDelays();
 
@@ -58,5 +58,21 @@ describe('decideNextStep', () => {
     expect(decideNextStep(1, 410, delays)).toEqual({
       action: 'disable_endpoint',
     });
+  });
+});
+
+describe('pickDelay', () => {
+  it('picks the shortest delay that covers the wait', () => {
+    expect(pickDelay(delays, 90_000).label).toBe('5m');
+    expect(pickDelay(delays, 60_000).label).toBe('1m');
+    expect(pickDelay(delays, 0).label).toBe('1m');
+  });
+
+  it('falls back to the longest delay', () => {
+    expect(pickDelay(delays, 86_400_000).label).toBe('6h');
+  });
+
+  it('does not depend on the order of the schedule', () => {
+    expect(pickDelay(parseRetryDelays('5m,1s,1m'), 2_000).label).toBe('1m');
   });
 });

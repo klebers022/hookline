@@ -5,9 +5,12 @@ import {
   decideNextStep,
   decryptSecret,
   DELIVERIES_DEAD_ROUTING_KEY,
+  DELIVERIES_EXCHANGE,
   DELIVERIES_READY_QUEUE,
   newId,
   parseRetryDelays,
+  pickDelay,
+  THROTTLE_DELAY,
   waitRoutingKey,
   withTransaction,
   type Broker,
@@ -21,9 +24,15 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
 import type { Logger } from 'pino';
 import { Agent } from 'undici';
+import { TokenBuckets } from './rate-limiter.js';
 import { sendWebhook, type SendResult } from './sender.js';
 
 const ERROR_BACKOFF_MS = 1_000;
+
+export interface CircuitBreakerOptions {
+  failureThreshold: number;
+  openMs: number;
+}
 
 export interface DeliveryWorkerOptions {
   pool: Pool;
@@ -35,6 +44,8 @@ export interface DeliveryWorkerOptions {
   maxErrorBackoffMs?: number;
   allowPrivateTargets?: boolean;
   lookup?: typeof dnsLookup;
+  circuitBreaker?: CircuitBreakerOptions;
+  endpointRateLimitPerSecond?: number;
 }
 
 interface DeliveryRow {
@@ -50,6 +61,7 @@ interface DeliveryRow {
   secret_encrypted: string;
   previous_secret_encrypted: string | null;
   endpoint_status: string;
+  circuit_wait_ms: number | null;
 }
 
 interface DeliveryMessage {
@@ -100,8 +112,12 @@ export function startDeliveryWorker({
   maxErrorBackoffMs = 30_000,
   allowPrivateTargets = false,
   lookup,
+  circuitBreaker = { failureThreshold: 5, openMs: 300_000 },
+  endpointRateLimitPerSecond = 50,
 }: DeliveryWorkerOptions) {
   const targetPolicy = { allowPrivateTargets };
+  const waitDelays = [...retryDelays, THROTTLE_DELAY];
+  const rateLimiter = new TokenBuckets(endpointRateLimitPerSecond);
   const dispatcher = new Agent(
     allowPrivateTargets
       ? {}
@@ -115,7 +131,10 @@ export function startDeliveryWorker({
               CASE WHEN ep.previous_secret_expires_at > now()
                 THEN ep.previous_secret_encrypted
               END AS previous_secret_encrypted,
-              ep.status AS endpoint_status
+              ep.status AS endpoint_status,
+              CASE WHEN ep.circuit_open_until > now()
+                THEN extract(epoch FROM ep.circuit_open_until - now()) * 1000
+              END::float8 AS circuit_wait_ms
        FROM deliveries d
        JOIN events e ON e.id = d.event_id
        JOIN endpoints ep ON ep.id = d.endpoint_id
@@ -197,6 +216,35 @@ export function startDeliveryWorker({
           [delivery.endpoint_id],
         );
       }
+
+      // The circuit state lives in the database, so every worker sees it.
+      // A failure while the circuit was already open, after it expired,
+      // opens it again.
+      if (next.action === 'succeed') {
+        await client.query(
+          `UPDATE endpoints
+           SET consecutive_failures = 0, circuit_open_until = NULL
+           WHERE id = $1
+             AND (consecutive_failures <> 0 OR circuit_open_until IS NOT NULL)`,
+          [delivery.endpoint_id],
+        );
+      } else {
+        await client.query(
+          `UPDATE endpoints
+           SET consecutive_failures = consecutive_failures + 1,
+               circuit_open_until = CASE
+                 WHEN consecutive_failures + 1 >= $2
+                   THEN now() + $3 * interval '1 millisecond'
+                 ELSE circuit_open_until
+               END
+           WHERE id = $1`,
+          [
+            delivery.endpoint_id,
+            circuitBreaker.failureThreshold,
+            circuitBreaker.openMs,
+          ],
+        );
+      }
     });
   }
 
@@ -214,14 +262,15 @@ export function startDeliveryWorker({
     });
   }
 
+  // Returns a delay when the delivery must wait without spending an attempt.
   async function processDelivery({
     delivery_id: id,
     attempt,
-  }: DeliveryMessage): Promise<void> {
+  }: DeliveryMessage): Promise<RetryDelay | undefined> {
     const delivery = await loadDelivery(id);
     if (!delivery) {
       logger.warn({ deliveryId: id }, 'Delivery not found');
-      return;
+      return undefined;
     }
     // A duplicate message: the relay published it twice, or a crash before the
     // ack made the broker redeliver it. This attempt already has its outcome.
@@ -229,11 +278,19 @@ export function startDeliveryWorker({
       FINAL_STATUSES.has(delivery.status) ||
       attempt <= delivery.attempt_count
     ) {
-      return;
+      return undefined;
     }
     if (delivery.endpoint_status !== 'active') {
       await abandonDelivery(delivery, attempt);
-      return;
+      return undefined;
+    }
+    // A failing endpoint gets a break instead of more doomed attempts, and
+    // one over its rate limit waits, so neither holds back other endpoints.
+    if (delivery.circuit_wait_ms !== null) {
+      return pickDelay(retryDelays, delivery.circuit_wait_ms);
+    }
+    if (!rateLimiter.tryTake(delivery.endpoint_id)) {
+      return THROTTLE_DELAY;
     }
 
     const encryptedSecrets = [
@@ -268,6 +325,26 @@ export function startDeliveryWorker({
       },
       'Delivery attempted',
     );
+    return undefined;
+  }
+
+  // Publishing straight to the broker is safe here, unlike for retries:
+  // nothing changes in the database, and a crash before the ack only
+  // redelivers the original message.
+  function deferMessage(
+    channel: ConfirmChannel,
+    message: ConsumeMessage,
+    delay: RetryDelay,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      channel.publish(
+        DELIVERIES_EXCHANGE,
+        waitRoutingKey(delay),
+        message.content,
+        { persistent: true, contentType: 'application/json' },
+        (error) => (error ? reject(error as Error) : resolve()),
+      );
+    });
   }
 
   let consecutiveErrors = 0;
@@ -286,7 +363,10 @@ export function startDeliveryWorker({
     }
 
     try {
-      await processDelivery(delivery);
+      const deferral = await processDelivery(delivery);
+      if (deferral) {
+        await deferMessage(channel, message, deferral);
+      }
       consecutiveErrors = 0;
       // Acknowledge only after the commit: a crash before this point makes
       // the broker redeliver the message instead of losing the delivery.
@@ -314,7 +394,7 @@ export function startDeliveryWorker({
     json: false,
     setup: async (ch: ConfirmChannel) => {
       await declareTopology(ch);
-      await declareWaitQueues(ch, retryDelays);
+      await declareWaitQueues(ch, waitDelays);
       await ch.prefetch(prefetch);
       await ch.consume(DELIVERIES_READY_QUEUE, (message) => {
         if (message) {

@@ -13,7 +13,8 @@
     "@types/amqplib": "^0.10.8",
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
   },
   "exports": [
     [
@@ -22,6 +23,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "dev:relay": "tsx watch --env-file-if-exists=../../.env src/main-relay.ts",
     "dev:deliver": "tsx watch --env-file-if-exists=../../.env src/main-deliver.ts"
   }
