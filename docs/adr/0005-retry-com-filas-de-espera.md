@@ -10,7 +10,7 @@ Um destino pode ficar horas fora do ar, então uma entrega com falha precisa esp
 
 Criar uma fila de espera por atraso: `deliveries.wait.1m`, `5m`, `30m`, `2h` e `6h`. Cada fila tem um TTL e devolve as mensagens expiradas a `deliveries.ready` por dead-lettering, com a estratégia `at-least-once`. As entregas esgotadas ficam com status `dead` e vão para `deliveries.dlq`.
 
-O worker não publica no RabbitMQ. Ele grava o resultado da tentativa e o próximo passo na outbox, na mesma transação, e o relay faz a publicação. Cada mensagem informa o número da tentativa, e o worker descarta a que já tem resultado registrado.
+O worker não publica as tentativas no RabbitMQ. Ele grava o resultado da tentativa e o próximo passo na outbox, na mesma transação, e o relay faz a publicação. A exceção são os adiamentos sem mudança no banco (ADR 0008). Cada mensagem informa o número da tentativa, e o worker descarta a que já tem resultado registrado.
 
 Erros internos, como o banco fora do ar, não gastam tentativa: a mensagem volta à fila após uma espera crescente, com `x-delivery-limit: -1`.
 

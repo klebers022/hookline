@@ -2,7 +2,7 @@
 
 Reliable webhook delivery: publish an event once, and Hookline delivers it at least once or moves it to a dead-letter queue, with an auditable history of every attempt.
 
-> **Status:** early development. Events are delivered, signed, recorded, and retried, and exhausted deliveries go to a dead-letter queue. Endpoint URLs are protected against SSRF. Per-endpoint isolation, such as a circuit breaker, is not implemented yet.
+> **Status:** early development. Events are delivered, signed, recorded, and retried, and exhausted deliveries go to a dead-letter queue. Endpoint URLs are protected against SSRF, and a failing or overloaded endpoint does not hold back the others. Graceful shutdown is not implemented yet.
 
 [Leia em português](README.pt-BR.md)
 
@@ -74,6 +74,11 @@ A delivery gets up to 6 attempts: one right away, then after 1 minute, 5 minutes
 Delivery is at least once, so an endpoint can receive the same event more than once. Use the `webhook-id` header, which stays the same across attempts, to discard repeats.
 
 `RETRY_DELAYS` changes the schedule, for example `2s,2s,2s,2s,2s` for a quick local test.
+
+### Endpoint isolation
+
+- **Circuit breaker:** after 5 failures in a row, Hookline stops calling the endpoint for 5 minutes. Deliveries wait without spending attempts. The endpoint's `consecutive_failures` and `circuit_open_until` show its state. A success, activating the endpoint again, or changing its URL closes the circuit.
+- **Rate limit:** each worker sends at most 50 webhooks per second to each endpoint, set with `ENDPOINT_RATE_LIMIT_PER_SECOND`. Deliveries over the limit wait one second, without spending attempts.
 
 ## Publishing safely
 

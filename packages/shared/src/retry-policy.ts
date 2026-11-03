@@ -25,6 +25,20 @@ export function parseRetryDelays(
   });
 }
 
+// Holds back a delivery over the endpoint's rate limit. It is short, so a
+// burst drains at roughly the allowed rate instead of in long steps.
+export const THROTTLE_DELAY: RetryDelay = { label: '1s', ms: 1_000 };
+
+// The shortest delay that covers the wait, or the longest available.
+export function pickDelay(delays: RetryDelay[], waitMs: number): RetryDelay {
+  const sorted = [...delays].sort((a, b) => a.ms - b.ms);
+  const longest = sorted.at(-1);
+  if (!longest) {
+    throw new Error('No delay is available');
+  }
+  return sorted.find((delay) => delay.ms >= waitMs) ?? longest;
+}
+
 // One delay exists for each attempt that can still be followed by another, so
 // a manual retry past the end of the schedule gets a single attempt.
 export function decideNextStep(

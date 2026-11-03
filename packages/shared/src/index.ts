@@ -23,6 +23,8 @@ export {
 export {
   decideNextStep,
   parseRetryDelays,
+  pickDelay,
+  THROTTLE_DELAY,
   type NextStep,
   type RetryDelay,
 } from './retry-policy.js';

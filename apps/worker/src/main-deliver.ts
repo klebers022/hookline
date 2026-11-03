@@ -16,6 +16,11 @@ startDeliveryWorker({
   encryptionKey: parseEncryptionKey(requireEnv('ENCRYPTION_KEY')),
   retryDelays: parseRetryDelays(process.env.RETRY_DELAYS),
   allowPrivateTargets: process.env.ALLOW_PRIVATE_TARGETS === 'true',
+  ...(process.env.ENDPOINT_RATE_LIMIT_PER_SECOND && {
+    endpointRateLimitPerSecond: Number(
+      process.env.ENDPOINT_RATE_LIMIT_PER_SECOND,
+    ),
+  }),
   logger,
 });
 logger.info('Delivery worker started');
