@@ -3,10 +3,14 @@ import {
   type FastifyPluginAsyncTypebox,
 } from '@fastify/type-provider-typebox';
 import {
+  assertPublicTarget,
+  BlockedTargetError,
   encryptSecret,
   generateEndpointSecret,
   newId,
   type Pool,
+  type ResolveHost,
+  type TargetPolicy,
 } from '@hookline/shared';
 import { notFound, ProblemError } from '../errors.js';
 import { PaginationQuery, toPage } from '../pagination.js';
@@ -20,21 +24,25 @@ const EventTypes = Type.Array(Type.String({ minLength: 1, maxLength: 255 }), {
 });
 const IdParams = Type.Object({ id: Type.String({ format: 'uuid' }) });
 
-function assertWebhookUrl(url: string): void {
-  const { protocol } = new URL(url);
-  if (protocol !== 'http:' && protocol !== 'https:') {
-    throw new ProblemError(
-      400,
-      'Bad Request',
-      'The endpoint URL must use http or https',
-    );
-  }
-}
-
 export const endpointRoutes: FastifyPluginAsyncTypebox<{
   pool: Pool;
   encryptionKey: Buffer;
-}> = async (app, { pool, encryptionKey }) => {
+  targetPolicy: TargetPolicy;
+  resolveHost?: ResolveHost;
+}> = async (app, { pool, encryptionKey, targetPolicy, resolveHost }) => {
+  // Rejecting internal URLs here gives a clear error early. The worker checks
+  // again on every connection, since DNS answers can change.
+  async function assertWebhookUrl(url: string): Promise<void> {
+    try {
+      await assertPublicTarget(url, targetPolicy, resolveHost);
+    } catch (error) {
+      if (error instanceof BlockedTargetError) {
+        throw new ProblemError(400, 'Bad Request', error.message);
+      }
+      throw error;
+    }
+  }
+
   app.post(
     '/endpoints',
     {
@@ -45,7 +53,7 @@ export const endpointRoutes: FastifyPluginAsyncTypebox<{
     },
     async (request, reply) => {
       const { url, event_types: eventTypes } = request.body;
-      assertWebhookUrl(url);
+      await assertWebhookUrl(url);
 
       // The secret is only returned here; it cannot be read back later.
       const secret = generateEndpointSecret();
@@ -116,7 +124,7 @@ export const endpointRoutes: FastifyPluginAsyncTypebox<{
     async (request) => {
       const { url, event_types: eventTypes, status } = request.body;
       if (url) {
-        assertWebhookUrl(url);
+        await assertWebhookUrl(url);
       }
 
       const { rows } = await pool.query(

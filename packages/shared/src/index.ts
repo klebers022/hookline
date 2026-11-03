@@ -37,6 +37,15 @@ export {
   parseEncryptionKey,
 } from './security/secret-box.js';
 export {
+  assertPublicTarget,
+  BlockedTargetError,
+  checkWebhookUrl,
+  createGuardedLookup,
+  isPublicAddress,
+  type ResolveHost,
+  type TargetPolicy,
+} from './security/ssrf.js';
+export {
   generateEndpointSecret,
   signWebhook,
   verifyWebhook,

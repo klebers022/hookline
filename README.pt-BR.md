@@ -2,7 +2,7 @@
 
 Entrega confiável de webhooks: publique um evento uma vez, e o Hookline o entrega pelo menos uma vez ou o move para uma dead-letter queue, com histórico auditável de cada tentativa.
 
-> **Status:** início do desenvolvimento. Os eventos são entregues, assinados, registrados e reenviados em caso de falha, e as entregas esgotadas vão para uma dead-letter queue. As proteções necessárias para URLs de terceiros, como o bloqueio de SSRF, ainda não existem.
+> **Status:** início do desenvolvimento. Os eventos são entregues, assinados, registrados e reenviados em caso de falha, e as entregas esgotadas vão para uma dead-letter queue. As URLs dos endpoints são protegidas contra SSRF. O isolamento por endpoint, como o circuit breaker, ainda não existe.
 
 [Read in English](README.md)
 
@@ -80,6 +80,17 @@ A entrega é "pelo menos uma vez", então um endpoint pode receber o mesmo event
 - **Pedidos repetidos:** envie o header `Idempotency-Key` em `POST /v1/events` para repetir um pedido com segurança. A mesma chave com o mesmo conteúdo devolve o evento original com `idempotent-replayed: true`. A mesma chave com conteúdo diferente devolve `409`.
 - **Limite de pedidos:** cada projeto pode fazer 6.000 pedidos por minuto à API por padrão, valor definido em `RATE_LIMIT_PER_MINUTE`. A contagem é por processo da API. Acima do limite, a API devolve `429` com o header `retry-after`.
 - **Troca de segredo:** `POST /v1/endpoints/:id/rotate-secret` devolve um novo segredo, mostrado uma única vez. Durante 24 horas, os webhooks levam as assinaturas do segredo antigo e do novo, para você trocar sem rejeitar nenhum. Uma nova troca nesse período encerra o segredo mais antigo na hora.
+
+## Proteção das URLs dos endpoints
+
+O Hookline chama URLs escolhidas pelos clientes, então bloqueia pedidos para endereços internos (SSRF):
+
+- **URLs aceitas:** apenas `https`, sem usuário e senha.
+- **Endereços bloqueados:** redes privadas, loopback, link-local (incluindo o endereço de metadados da nuvem, `169.254.169.254`) e outras faixas reservadas, em IPv4 e IPv6.
+- **No cadastro:** a API resolve o hostname e recusa a URL se algum endereço for bloqueado.
+- **Em cada conexão:** o worker confere de novo e se conecta ao endereço que conferiu, então uma resposta de DNS que mude depois não alcança um endereço interno. Uma tentativa bloqueada fica registrada com o erro `SSRF_BLOCKED`.
+
+`ALLOW_PRIVATE_TARGETS=true` desliga essa proteção, para o desenvolvimento local usar o receptor de teste em `http://127.0.0.1`. Ela fica desligada se não for definida e deve continuar assim onde terceiros podem cadastrar endpoints.
 
 ## Decisões de arquitetura
 

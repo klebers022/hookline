@@ -2,7 +2,7 @@
 
 Reliable webhook delivery: publish an event once, and Hookline delivers it at least once or moves it to a dead-letter queue, with an auditable history of every attempt.
 
-> **Status:** early development. Events are delivered, signed, recorded, and retried, and exhausted deliveries go to a dead-letter queue. The protections required for third-party URLs, such as SSRF blocking, are not implemented yet.
+> **Status:** early development. Events are delivered, signed, recorded, and retried, and exhausted deliveries go to a dead-letter queue. Endpoint URLs are protected against SSRF. Per-endpoint isolation, such as a circuit breaker, is not implemented yet.
 
 [Leia em português](README.pt-BR.md)
 
@@ -80,6 +80,17 @@ Delivery is at least once, so an endpoint can receive the same event more than o
 - **Repeated requests:** send an `Idempotency-Key` header on `POST /v1/events` to retry a request safely. The same key and content return the original event with `idempotent-replayed: true`. The same key with different content returns `409`.
 - **Rate limit:** each project can make 6,000 API requests per minute by default, set with `RATE_LIMIT_PER_MINUTE`. The count is per API process. Past the limit, the API returns `429` with a `retry-after` header.
 - **Secret rotation:** `POST /v1/endpoints/:id/rotate-secret` returns a new secret, shown only once. For 24 hours, webhooks carry signatures from both the old and the new secret, so you can switch without rejecting any. Rotating again within that period ends the older secret at once.
+
+## Endpoint URL protection
+
+Hookline calls URLs chosen by its clients, so it blocks requests to internal addresses (SSRF):
+
+- **Allowed URLs:** `https` only, without credentials.
+- **Blocked addresses:** private networks, loopback, link-local (including the cloud metadata address `169.254.169.254`), and other reserved ranges, in IPv4 and IPv6.
+- **At registration:** the API resolves the hostname and rejects the URL if any address is blocked.
+- **On every connection:** the worker checks again and connects to the address it checked, so a DNS answer that changes later cannot reach an internal address. A blocked attempt is recorded with the `SSRF_BLOCKED` error.
+
+`ALLOW_PRIVATE_TARGETS=true` turns this off, so local development can use the test receiver at `http://127.0.0.1`. It is off unless set, and must stay off wherever third parties can register endpoints.
 
 ## Architecture decisions
 

@@ -1,5 +1,9 @@
-import { signWebhook } from '@hookline/shared';
-import { request } from 'undici';
+import {
+  checkWebhookUrl,
+  signWebhook,
+  type TargetPolicy,
+} from '@hookline/shared';
+import { request, type Dispatcher } from 'undici';
 
 const TIMEOUT_MS = 10_000;
 const SNIPPET_BYTES = 1024;
@@ -9,6 +13,11 @@ export interface WebhookMessage {
   secrets: string[];
   id: string;
   body: string;
+}
+
+export interface SendOptions {
+  dispatcher: Dispatcher;
+  targetPolicy: TargetPolicy;
 }
 
 export interface SendResult {
@@ -33,21 +42,23 @@ async function readSnippet(body: AsyncIterable<Buffer>): Promise<string> {
   return Buffer.concat(chunks).subarray(0, SNIPPET_BYTES).toString('utf8');
 }
 
-export async function sendWebhook({
-  url,
-  secrets,
-  id,
-  body,
-}: WebhookMessage): Promise<SendResult> {
+export async function sendWebhook(
+  { url, secrets, id, body }: WebhookMessage,
+  { dispatcher, targetPolicy }: SendOptions,
+): Promise<SendResult> {
   const startedAt = new Date();
   const timestamp = Math.floor(startedAt.getTime() / 1000);
   const started = performance.now();
   const elapsed = () => Math.round(performance.now() - started);
 
   try {
+    // An address written in the URL skips DNS, so the dispatcher's lookup
+    // never sees it and it is checked here instead.
+    checkWebhookUrl(url, targetPolicy);
     // undici's request does not follow redirects, which the delivery policy
     // treats as failures.
     const response = await request(url, {
+      dispatcher,
       method: 'POST',
       headers: {
         'content-type': 'application/json',

@@ -4,7 +4,6 @@ import {
   createPool,
   parseRetryDelays,
   runMigrations,
-  type Pool,
 } from '@hookline/shared';
 import { startReceiver } from '@hookline/test-receiver';
 import { startDeliveryWorker, startRelay } from '@hookline/worker';
@@ -30,7 +29,12 @@ export async function startHarness(retrySchedule?: string) {
 
   const pool = createPool(postgres.getConnectionUri());
   const broker = connectBroker(rabbit.getAmqpUrl());
-  const app = await buildApp({ pool, encryptionKey });
+  // The test receiver runs on localhost, which production would block.
+  const app = await buildApp({
+    pool,
+    encryptionKey,
+    allowPrivateTargets: true,
+  });
   const receiver = await startReceiver();
   const retryDelays = parseRetryDelays(retrySchedule);
   const { apiKey } = await createProject(pool, 'test');
@@ -43,7 +47,7 @@ export async function startHarness(retrySchedule?: string) {
   }
 
   function newWorker(
-    options: { pool?: Pool; maxErrorBackoffMs?: number } = {},
+    options: Partial<Parameters<typeof startDeliveryWorker>[0]> = {},
   ) {
     return startDeliveryWorker({
       pool,
@@ -51,6 +55,7 @@ export async function startHarness(retrySchedule?: string) {
       encryptionKey,
       logger,
       retryDelays,
+      allowPrivateTargets: true,
       ...options,
     });
   }
