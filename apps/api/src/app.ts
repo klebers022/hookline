@@ -4,6 +4,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import type { Pool, ResolveHost } from '@hookline/shared';
 import Fastify, { type FastifyError } from 'fastify';
+import { STATUS_CODES } from 'node:http';
 import { createAuthHook } from './auth.js';
 import { ProblemError } from './errors.js';
 import { deliveryRoutes } from './routes/deliveries.js';
@@ -34,6 +35,38 @@ export async function buildApp({
     bodyLimit: BODY_LIMIT_BYTES,
   }).withTypeProvider<TypeBoxTypeProvider>();
 
+  // Some clients send a Content-Type on a POST without a body, such as a
+  // retry. An empty body is accepted whatever its type, and any other body
+  // still has to be valid JSON.
+  const parseJson = app.getDefaultJsonParser('error', 'error');
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (request, body, done) => {
+      if (body === '') {
+        done(null, undefined);
+        return;
+      }
+      // parseAs: 'string' always hands over a string.
+      parseJson(request, body as string, done);
+    },
+  );
+  app.addContentTypeParser(
+    '*',
+    { parseAs: 'string' },
+    (request, body, done) => {
+      if (body === '') {
+        done(null, undefined);
+        return;
+      }
+      const error = new Error(
+        `Unsupported Media Type: ${request.headers['content-type']}`,
+      );
+      done(Object.assign(error, { statusCode: 415 }), undefined);
+    },
+  );
+
   await app.register(swagger, {
     openapi: {
       info: { title: 'Hookline API', version: '0.1.0' },
@@ -54,9 +87,7 @@ export async function buildApp({
     const title =
       error instanceof ProblemError
         ? error.title
-        : status >= 500
-          ? 'Internal Server Error'
-          : 'Bad Request';
+        : (STATUS_CODES[status] ?? 'Error');
     return reply
       .code(status)
       .type('application/problem+json')
