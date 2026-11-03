@@ -1,3 +1,4 @@
+import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
@@ -15,12 +16,14 @@ export interface AppOptions {
   pool: Pool;
   encryptionKey: Buffer;
   logger?: boolean;
+  rateLimitPerMinute?: number;
 }
 
 export async function buildApp({
   pool,
   encryptionKey,
   logger = false,
+  rateLimitPerMinute = 6_000,
 }: AppOptions) {
   const app = Fastify({
     logger,
@@ -87,6 +90,19 @@ export async function buildApp({
     async (v1) => {
       v1.decorateRequest('projectId', '');
       v1.addHook('onRequest', createAuthHook(pool));
+      // Runs after authentication, so each project has its own limit and
+      // requests without a valid key never reach it.
+      await v1.register(rateLimit, {
+        max: rateLimitPerMinute,
+        timeWindow: 60_000,
+        keyGenerator: (request) => request.projectId,
+        errorResponseBuilder: (_request, { after }) =>
+          new ProblemError(
+            429,
+            'Too Many Requests',
+            `Rate limit exceeded, retry in ${after}`,
+          ),
+      });
       await v1.register(endpointRoutes, { pool, encryptionKey });
       await v1.register(eventRoutes, { pool });
       await v1.register(deliveryRoutes, { pool });

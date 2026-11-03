@@ -75,6 +75,12 @@ Delivery is at least once, so an endpoint can receive the same event more than o
 
 `RETRY_DELAYS` changes the schedule, for example `2s,2s,2s,2s,2s` for a quick local test.
 
+## Publishing safely
+
+- **Repeated requests:** send an `Idempotency-Key` header on `POST /v1/events` to retry a request safely. The same key and content return the original event with `idempotent-replayed: true`. The same key with different content returns `409`.
+- **Rate limit:** each project can make 6,000 API requests per minute by default, set with `RATE_LIMIT_PER_MINUTE`. The count is per API process. Past the limit, the API returns `429` with a `retry-after` header.
+- **Secret rotation:** `POST /v1/endpoints/:id/rotate-secret` returns a new secret, shown only once. For 24 hours, webhooks carry signatures from both the old and the new secret, so you can switch without rejecting any. Rotating again within that period ends the older secret at once.
+
 ## Architecture decisions
 
 See [docs/adr](docs/adr).

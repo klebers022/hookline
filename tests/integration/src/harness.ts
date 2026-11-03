@@ -115,6 +115,7 @@ export async function startHarness(retrySchedule?: string) {
 
   return {
     app,
+    encryptionKey,
     apiKey,
     pool,
     receiver,

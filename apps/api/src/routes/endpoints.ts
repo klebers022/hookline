@@ -142,6 +142,35 @@ export const endpointRoutes: FastifyPluginAsyncTypebox<{
     },
   );
 
+  // Webhooks are signed with both secrets during the overlap, so the receiver
+  // can switch to the new one without rejecting anything. Another rotation
+  // within the overlap ends the older secret at once.
+  app.post(
+    '/endpoints/:id/rotate-secret',
+    { schema: { tags: ['endpoints'], params: IdParams } },
+    async (request) => {
+      const secret = generateEndpointSecret();
+      const { rows } = await pool.query(
+        `UPDATE endpoints
+         SET previous_secret_encrypted = secret_encrypted,
+             previous_secret_expires_at = now() + interval '24 hours',
+             secret_encrypted = $3,
+             updated_at = now()
+         WHERE id = $1 AND project_id = $2 AND status <> 'deleted'
+         RETURNING ${PUBLIC_COLUMNS}, previous_secret_expires_at`,
+        [
+          request.params.id,
+          request.projectId,
+          encryptSecret(secret, encryptionKey),
+        ],
+      );
+      if (!rows[0]) {
+        throw notFound('Endpoint');
+      }
+      return { ...rows[0], secret };
+    },
+  );
+
   // Soft delete, so the delivery history keeps pointing at a real endpoint.
   app.delete(
     '/endpoints/:id',
