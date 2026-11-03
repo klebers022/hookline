@@ -3,10 +3,9 @@
 # One build for every image: install, compile and assemble each app with
 # only its production dependencies. It runs on the build machine's own
 # architecture, since nothing here compiles native code, and the final
-# images only copy its output.
-ARG NODE_IMAGE=node:24-alpine
-
-FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS build
+# images only copy its output. The base image is pinned by digest, which
+# Dependabot updates.
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS build
 WORKDIR /repo
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -23,7 +22,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 
 # Node without the package managers it ships with, which the apps never use
 # and which only add files for a scanner to flag.
-FROM ${NODE_IMAGE} AS runtime
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS runtime
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
       /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
