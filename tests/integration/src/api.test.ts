@@ -203,6 +203,67 @@ describe('API reliability', () => {
     });
   });
 
+  // Some clients, such as PowerShell's Invoke-RestMethod, send a Content-Type
+  // on a POST without a body.
+  describe('POST without a body', () => {
+    function rotate(id: string, contentType: string) {
+      return h.app.inject({
+        method: 'POST',
+        url: `/v1/endpoints/${id}/rotate-secret`,
+        headers: {
+          authorization: `Bearer ${h.apiKey}`,
+          'content-type': contentType,
+        },
+        payload: '',
+      });
+    }
+
+    it.each([
+      'application/x-www-form-urlencoded',
+      'application/json',
+      'text/plain',
+    ])('accepts an empty body sent as %s', async (contentType) => {
+      const { id } = await h.createEndpoint(['empty.body']);
+
+      const response = await rotate(id, contentType);
+
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('still rejects a body in an unsupported format', async () => {
+      const response = await h.app.inject({
+        method: 'POST',
+        url: '/v1/endpoints',
+        headers: {
+          authorization: `Bearer ${h.apiKey}`,
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        payload: 'url=https%3A%2F%2Fexample.com&event_types=a',
+      });
+
+      expect(response.statusCode).toBe(415);
+      expect(response.json()).toMatchObject({
+        title: 'Unsupported Media Type',
+        status: 415,
+      });
+    });
+
+    it('still rejects malformed JSON', async () => {
+      const response = await h.app.inject({
+        method: 'POST',
+        url: '/v1/events',
+        headers: {
+          authorization: `Bearer ${h.apiKey}`,
+          'content-type': 'application/json',
+        },
+        payload: '{"type":',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ title: 'Bad Request' });
+    });
+  });
+
   describe('rate limit', () => {
     let limited: Awaited<ReturnType<typeof buildApp>>;
 
