@@ -29,7 +29,6 @@
   "dependencies": {
     "amqp-connection-manager": "^5.0.1",
     "amqplib": "^2.2.1",
-    "node-pg-migrate": "^9.0.0",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "uuid": "^14.0.3"
