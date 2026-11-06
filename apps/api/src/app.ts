@@ -2,7 +2,13 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import type { Pool, ResolveHost } from '@hookline/shared';
+import {
+  Counter,
+  Histogram,
+  Registry,
+  type Pool,
+  type ResolveHost,
+} from '@hookline/shared';
 import Fastify, { type FastifyError } from 'fastify';
 import { STATUS_CODES } from 'node:http';
 import { createAuthHook } from './auth.js';
@@ -20,6 +26,34 @@ export interface AppOptions {
   rateLimitPerMinute?: number;
   allowPrivateTargets?: boolean;
   resolveHost?: ResolveHost;
+  registry?: Registry;
+}
+
+export type ApiMetrics = ReturnType<typeof createApiMetrics>;
+
+function createApiMetrics(registry: Registry) {
+  const registers = [registry];
+  return {
+    // The route is the pattern, such as /v1/events/:id, so ids never become
+    // labels.
+    requestDuration: new Histogram({
+      name: 'hookline_http_request_duration_seconds',
+      help: 'API request duration, by method, route and status class.',
+      labelNames: ['method', 'route', 'status_class'] as const,
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 2.5],
+      registers,
+    }),
+    eventsAccepted: new Counter({
+      name: 'hookline_events_accepted_total',
+      help: 'Events accepted, without Idempotency-Key replays.',
+      registers,
+    }),
+    deliveriesCreated: new Counter({
+      name: 'hookline_deliveries_created_total',
+      help: 'Deliveries created by fan-out to subscribed endpoints.',
+      registers,
+    }),
+  };
 }
 
 export async function buildApp({
@@ -29,7 +63,9 @@ export async function buildApp({
   rateLimitPerMinute = 6_000,
   allowPrivateTargets = false,
   resolveHost,
+  registry = new Registry(),
 }: AppOptions) {
+  const metrics = createApiMetrics(registry);
   const app = Fastify({
     logger,
     bodyLimit: BODY_LIMIT_BYTES,
@@ -107,6 +143,17 @@ export async function buildApp({
     }),
   );
 
+  app.addHook('onResponse', async (request, reply) => {
+    metrics.requestDuration.observe(
+      {
+        method: request.method,
+        route: request.routeOptions.url ?? 'unmatched',
+        status_class: `${Math.floor(reply.statusCode / 100)}xx`,
+      },
+      reply.elapsedTime / 1000,
+    );
+  });
+
   app.get('/healthz', { schema: { hide: true } }, async () => ({
     status: 'ok',
   }));
@@ -144,7 +191,7 @@ export async function buildApp({
         targetPolicy: { allowPrivateTargets },
         ...(resolveHost && { resolveHost }),
       });
-      await v1.register(eventRoutes, { pool });
+      await v1.register(eventRoutes, { pool, metrics });
       await v1.register(deliveryRoutes, { pool });
     },
     { prefix: '/v1' },

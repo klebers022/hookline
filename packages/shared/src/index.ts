@@ -56,3 +56,12 @@ export {
   signWebhook,
   verifyWebhook,
 } from './security/signing.js';
+export {
+  Counter,
+  createRegistry,
+  Gauge,
+  Histogram,
+  Registry,
+  startOpsServer,
+  type OpsServerOptions,
+} from './telemetry/metrics.js';

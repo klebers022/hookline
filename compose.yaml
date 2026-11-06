@@ -11,6 +11,10 @@ x-app-env: &app-env
   RETRY_DELAYS: ${RETRY_DELAYS:-1m,5m,30m,2h,6h}
   # Lets endpoints point at the test receiver inside this network. Local only.
   ALLOW_PRIVATE_TARGETS: 'true'
+  # Every process serves /metrics, /healthz and /readyz on this port. It is
+  # not published: only Prometheus, inside this network, reads it.
+  METRICS_HOST: 0.0.0.0
+  METRICS_PORT: '9464'
 
 x-api-image: &api-image
   image: hookline-api:${HOOKLINE_TAG:-local}
@@ -19,6 +23,17 @@ x-api-image: &api-image
 x-worker-image: &worker-image
   image: hookline-worker:${HOOKLINE_TAG:-local}
   build: { context: ., target: worker }
+
+# Asks a process's ops port whether it can do its work.
+x-ops-healthcheck: &ops-healthcheck
+  test:
+    - CMD
+    - node
+    - -e
+    - "fetch('http://127.0.0.1:9464/readyz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+  interval: 5s
+  timeout: 5s
+  retries: 10
 
 x-after-migrate: &after-migrate
   migrate: { condition: service_completed_successfully }
@@ -93,6 +108,7 @@ services:
     environment: *app-env
     depends_on: *after-migrate
     stop_grace_period: 35s
+    healthcheck: *ops-healthcheck
 
   deliver:
     <<: *worker-image
@@ -100,6 +116,7 @@ services:
     environment: *app-env
     depends_on: *after-migrate
     stop_grace_period: 35s
+    healthcheck: *ops-healthcheck
 
   test-receiver:
     image: hookline-test-receiver:${HOOKLINE_TAG:-local}
@@ -108,6 +125,37 @@ services:
     ports:
       - '127.0.0.1:4000:4000'
 
+  # Observability, with the "observability" profile (pnpm obs:up). It reads
+  # the app services above, so start them with pnpm stack:up.
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    profiles: [observability]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - '127.0.0.1:9090:9090'
+    volumes:
+      - ./infra/observability/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    profiles: [observability]
+    environment:
+      # Local only: anyone who opens the page is an admin, without a login.
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/hookline-overview.json
+    ports:
+      - '127.0.0.1:3001:3000'
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
+
 volumes:
   postgres-data:
   rabbitmq-data:
+  prometheus-data:

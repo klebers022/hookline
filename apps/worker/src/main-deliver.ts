@@ -1,10 +1,12 @@
 import {
   connectBroker,
   createPool,
+  createRegistry,
   onShutdown,
   parseEncryptionKey,
   parseRetryDelays,
   requireEnv,
+  startOpsServer,
 } from '@hookline/shared';
 import { pino } from 'pino';
 import { startDeliveryWorker } from './deliver.js';
@@ -12,6 +14,7 @@ import { startDeliveryWorker } from './deliver.js';
 const logger = pino({ name: 'delivery-worker' });
 const pool = createPool(requireEnv('DATABASE_URL'));
 const broker = connectBroker(requireEnv('RABBITMQ_URL'));
+const registry = createRegistry('deliver');
 
 const worker = startDeliveryWorker({
   pool,
@@ -25,6 +28,14 @@ const worker = startDeliveryWorker({
     ),
   }),
   logger,
+  registry,
+});
+// Metrics and health checks on a port of their own, never published.
+const ops = await startOpsServer({
+  registry,
+  port: Number(process.env.METRICS_PORT ?? 9466),
+  ...(process.env.METRICS_HOST && { host: process.env.METRICS_HOST }),
+  isReady: () => broker.isConnected(),
 });
 logger.info('Delivery worker started');
 
@@ -32,4 +43,5 @@ onShutdown(logger, async () => {
   await worker.stop();
   await broker.close();
   await pool.end();
+  await ops.close();
 });
