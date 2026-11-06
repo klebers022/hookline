@@ -31,19 +31,20 @@ WORKDIR /app
 USER node
 
 # Exec-form commands keep node as process 1, so docker stop's SIGTERM
-# reaches the graceful shutdown.
+# reaches the graceful shutdown. --import loads tracing before the app; it
+# stays off unless OTEL_EXPORTER_OTLP_ENDPOINT is set.
 FROM runtime AS api
 COPY --from=build /out/api ./
 COPY --from=build /repo/db/migrations ./migrations
 ENV HOST=0.0.0.0 PORT=3000 MIGRATIONS_DIR=/app/migrations
 EXPOSE 3000
-CMD ["node", "--enable-source-maps", "dist/server.js"]
+CMD ["node", "--enable-source-maps", "--import", "@hookline/shared/tracing", "dist/server.js"]
 
 # Runs the delivery worker by default; the relay is the same image with
-# the command node dist/main-relay.js.
+# dist/main-relay.js in place of dist/main-deliver.js.
 FROM runtime AS worker
 COPY --from=build /out/worker ./
-CMD ["node", "--enable-source-maps", "dist/main-deliver.js"]
+CMD ["node", "--enable-source-maps", "--import", "@hookline/shared/tracing", "dist/main-deliver.js"]
 
 FROM runtime AS test-receiver
 COPY --from=build /out/test-receiver ./

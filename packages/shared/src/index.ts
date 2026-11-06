@@ -65,3 +65,13 @@ export {
   startOpsServer,
   type OpsServerOptions,
 } from './telemetry/metrics.js';
+export {
+  captureTraceContext,
+  markSpanFailed,
+  nameServerSpan,
+  setSpanAttributes,
+  shutdownTracing,
+  withConsumeSpan,
+  withPublishSpan,
+  type TraceCarrier,
+} from './telemetry/trace-context.js';

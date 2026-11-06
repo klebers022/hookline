@@ -143,7 +143,7 @@ pnpm obs:down
 
 Cada processo serve `/metrics` (formato do Prometheus), `/healthz` e `/readyz` numa porta de operação própria, que nunca é a porta pública da API: `METRICS_PORT`, 9464 nos contêineres, e 9464, 9465 e 9466 para a API, o relay e o worker de entrega com `pnpm dev:*`. Ela escuta em `127.0.0.1`, a menos que `METRICS_HOST` diga outro endereço.
 
-`pnpm obs:up` sobe o Prometheus em <http://localhost:9090> e o Grafana em <http://localhost:3001>, que abre no painel "Hookline – visão geral". O Prometheus coleta os contêineres de `pnpm stack:up` e as métricas das filas do RabbitMQ. O painel e as fontes de dados são provisionados a partir de `infra/observability`; para mudar o painel, edite o JSON ali, não na interface.
+`pnpm obs:up` sobe o Prometheus em <http://localhost:9090>, o Tempo para os traces e o Grafana em <http://localhost:3001>, que abre no painel "Hookline – visão geral". O Prometheus coleta os contêineres de `pnpm stack:up` e as métricas das filas do RabbitMQ. O painel e as fontes de dados são provisionados a partir de `infra/observability`; para mudar o painel, edite o JSON ali, não na interface.
 
 | Métrica                                                                          | O que mostra                                                                  |
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -157,6 +157,14 @@ Cada processo serve `/metrics` (formato do Prometheus), `/healthz` e `/readyz` n
 | `hookline_endpoints_circuit_open`                                                | Endpoints com o disjuntor aberto                                              |
 
 Os rótulos só assumem valores de conjuntos pequenos e fixos. O detalhe por endpoint fica no banco.
+
+### Traces
+
+A API, o relay e o worker de entrega enviam traces do OpenTelemetry por OTLP quando `OTEL_EXPORTER_OTLP_ENDPOINT` está definida, o que o compose faz, apontando para o Tempo. Sem ela, o tracing nem é carregado. As imagens o carregam com `node --import @hookline/shared/tracing` antes do app, que passa a rastrear pedidos HTTP, consultas ao PostgreSQL e o POST do webhook, e a incluir `trace_id` e `span_id` nas linhas de log.
+
+O trace atravessa a outbox e a fila à mão: cada linha da outbox guarda o contexto W3C de quem a escreveu (`outbox.trace_context`), o relay publica como filho dele e envia o próprio contexto nos headers da mensagem, e o worker de entrega continua dali. Assim, um único trace mostra o `POST /v1/events`, as gravações no banco, a publicação, a tentativa de entrega e a resposta do endpoint. Uma nova tentativa, que pode vir horas depois, abre um trace novo com um link para o da tentativa anterior. No Grafana, abra o Explore, escolha o Tempo e busque, por exemplo, `{ name = "POST /v1/events" }`.
+
+As requisições de webhook levam o header `traceparent`, então um endpoint que também usa tracing pode entrar no mesmo trace.
 
 ## Imagens publicadas
 

@@ -3,6 +3,7 @@ import {
   type FastifyPluginAsyncTypebox,
 } from '@fastify/type-provider-typebox';
 import {
+  captureTraceContext,
   DELIVERIES_READY_ROUTING_KEY,
   withTransaction,
   type Pool,
@@ -130,9 +131,14 @@ export const deliveryRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (
           [id],
         );
         await client.query(
-          `INSERT INTO outbox (delivery_id, routing_key, payload)
-           VALUES ($1, $2, jsonb_build_object('delivery_id', $1::uuid, 'attempt', $3::int))`,
-          [id, DELIVERIES_READY_ROUTING_KEY, nextAttempt],
+          `INSERT INTO outbox (delivery_id, routing_key, payload, trace_context)
+           VALUES ($1, $2, jsonb_build_object('delivery_id', $1::uuid, 'attempt', $3::int), $4)`,
+          [
+            id,
+            DELIVERIES_READY_ROUTING_KEY,
+            nextAttempt,
+            captureTraceContext(),
+          ],
         );
         return nextAttempt;
       });
