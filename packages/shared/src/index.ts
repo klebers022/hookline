@@ -1,5 +1,4 @@
 export { requireEnv } from './config/env.js';
-export { runMigrations } from './db/migrate.js';
 export {
   createPool,
   withTransaction,

@@ -1,4 +1,5 @@
-import { requireEnv, runMigrations } from '@hookline/shared';
+import { requireEnv } from '@hookline/shared';
+import { runMigrations } from '../migrate.js';
 
 await runMigrations(
   requireEnv('DATABASE_URL'),
