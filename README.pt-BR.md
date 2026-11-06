@@ -8,7 +8,7 @@ Entrega confiável de webhooks: publique um evento uma vez, e o Hookline o entre
 
 ## Requisitos
 
-- Node.js 24 (veja `.nvmrc`)
+- Node.js 26 (veja `.nvmrc`)
 - pnpm, via Corepack (`corepack enable`)
 - Docker com Compose
 
