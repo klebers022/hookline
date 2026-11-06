@@ -100,6 +100,33 @@ async function delivery(eventId) {
   });
 }
 
+// Reads a process's metrics from inside its container: the ops port is not
+// published outside the compose network.
+function metric(service, name, labels) {
+  const text = compose(
+    'exec',
+    '-T',
+    service,
+    'node',
+    '-e',
+    "fetch('http://127.0.0.1:9464/metrics').then((r) => r.text()).then((t) => process.stdout.write(t))",
+  );
+  const line = text
+    .split('\n')
+    .find(
+      (l) =>
+        l.startsWith(`${name}{`) &&
+        Object.entries(labels).every(([key, value]) =>
+          l.includes(`${key}="${value}"`),
+        ),
+    );
+  return line ? Number(line.split(' ').at(-1)) : 0;
+}
+
+const succeededBefore = metric('deliver', 'hookline_delivery_attempts_total', {
+  outcome: 'succeeded',
+});
+
 const first = await publish('first');
 const webhook = await waitFor('the first webhook', () => arrived(first));
 if (webhook.signature_valid !== true) {
@@ -110,6 +137,19 @@ await waitFor(
   async () => (await delivery(first)).status === 'succeeded',
 );
 step('A published event arrived signed and was recorded as succeeded');
+
+const succeededAfter = metric('deliver', 'hookline_delivery_attempts_total', {
+  outcome: 'succeeded',
+});
+if (succeededAfter !== succeededBefore + 1) {
+  throw new Error(
+    `Succeeded attempts went from ${succeededBefore} to ${succeededAfter}, not up by 1`,
+  );
+}
+if (metric('api', 'hookline_events_accepted_total', {}) < 1) {
+  throw new Error('The API did not count the accepted event');
+}
+step('The metrics counted the event and the succeeded attempt');
 
 // The receiver records a webhook as it arrives and answers 5 seconds
 // later, so the worker is stopped while the request is in flight.

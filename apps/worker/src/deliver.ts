@@ -17,6 +17,7 @@ import {
   type NextStep,
   type Pool,
   type PoolClient,
+  Registry,
   type RetryDelay,
 } from '@hookline/shared';
 import type { lookup as dnsLookup } from 'node:dns';
@@ -24,6 +25,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
 import type { Logger } from 'pino';
 import { Agent } from 'undici';
+import { createDeliveryMetrics, type AttemptOutcome } from './metrics.js';
 import { TokenBuckets } from './rate-limiter.js';
 import { sendWebhook, type SendResult } from './sender.js';
 
@@ -47,6 +49,7 @@ export interface DeliveryWorkerOptions {
   circuitBreaker?: CircuitBreakerOptions;
   endpointRateLimitPerSecond?: number;
   shutdownTimeoutMs?: number;
+  registry?: Registry;
 }
 
 interface DeliveryRow {
@@ -77,6 +80,13 @@ const DELIVERY_STATUS: Record<NextStep['action'], string> = {
   retry: 'retrying',
   dead: 'dead',
   disable_endpoint: 'dead',
+};
+
+const ATTEMPT_OUTCOME: Record<NextStep['action'], AttemptOutcome> = {
+  succeed: 'succeeded',
+  retry: 'retry',
+  dead: 'dead',
+  disable_endpoint: 'endpoint_disabled',
 };
 
 function parseMessage(content: Buffer): DeliveryMessage {
@@ -116,7 +126,9 @@ export function startDeliveryWorker({
   circuitBreaker = { failureThreshold: 5, openMs: 300_000 },
   endpointRateLimitPerSecond = 50,
   shutdownTimeoutMs = 15_000,
+  registry = new Registry(),
 }: DeliveryWorkerOptions) {
+  const metrics = createDeliveryMetrics(registry, () => inFlight.size);
   const targetPolicy = { allowPrivateTargets };
   const waitDelays = [...retryDelays, THROTTLE_DELAY];
   const rateLimiter = new TokenBuckets(endpointRateLimitPerSecond);
@@ -147,18 +159,19 @@ export function startDeliveryWorker({
   }
 
   // The attempt and whatever comes next commit together, so a crash can never
-  // record a failure and forget to schedule the following attempt.
+  // record a failure and forget to schedule the following attempt. Returns
+  // the next step, or nothing when a duplicate already recorded the attempt.
   async function recordAttempt(
     delivery: DeliveryRow,
     attemptNumber: number,
     result: SendResult,
-  ): Promise<void> {
+  ): Promise<NextStep | undefined> {
     const next = decideNextStep(
       attemptNumber,
       result.responseStatus,
       retryDelays,
     );
-    await withTransaction(pool, async (client) => {
+    return withTransaction(pool, async (client) => {
       const { rowCount } = await client.query(
         `INSERT INTO delivery_attempts
            (id, delivery_id, attempt_number, started_at, duration_ms,
@@ -178,7 +191,7 @@ export function startDeliveryWorker({
       );
       // A duplicate message running at the same time recorded this attempt.
       if (!rowCount) {
-        return;
+        return undefined;
       }
 
       await client.query(
@@ -247,6 +260,7 @@ export function startDeliveryWorker({
           ],
         );
       }
+      return next;
     });
   }
 
@@ -280,19 +294,28 @@ export function startDeliveryWorker({
       FINAL_STATUSES.has(delivery.status) ||
       attempt <= delivery.attempt_count
     ) {
+      metrics.duplicates.inc();
       return undefined;
     }
     if (delivery.endpoint_status !== 'active') {
       await abandonDelivery(delivery, attempt);
+      metrics.abandoned.inc();
       return undefined;
     }
     // A failing endpoint gets a break instead of more doomed attempts, and
     // one over its rate limit waits, so neither holds back other endpoints.
     if (delivery.circuit_wait_ms !== null) {
+      metrics.deferrals.inc({ reason: 'circuit_open' });
       return pickDelay(retryDelays, delivery.circuit_wait_ms);
     }
     if (!rateLimiter.tryTake(delivery.endpoint_id)) {
+      metrics.deferrals.inc({ reason: 'rate_limited' });
       return THROTTLE_DELAY;
+    }
+    if (attempt === 1) {
+      metrics.firstAttemptDelay.observe(
+        (Date.now() - delivery.created_at.getTime()) / 1000,
+      );
     }
 
     const encryptedSecrets = [
@@ -316,7 +339,15 @@ export function startDeliveryWorker({
       },
       { dispatcher, targetPolicy },
     );
-    await recordAttempt(delivery, attempt, result);
+    const next = await recordAttempt(delivery, attempt, result);
+    if (next) {
+      const outcome = ATTEMPT_OUTCOME[next.action];
+      metrics.attempts.inc({ outcome });
+      metrics.attemptDuration.observe({ outcome }, result.durationMs / 1000);
+      if (result.errorCode) {
+        metrics.attemptErrors.inc({ code: result.errorCode });
+      }
+    }
     logger.info(
       {
         deliveryId: id,
@@ -381,6 +412,7 @@ export function startDeliveryWorker({
       // This is an internal failure, such as the database being down, not a
       // failed delivery, so it spends no attempt. Waiting keeps a long outage
       // from turning into a tight loop of returned messages.
+      metrics.processingErrors.inc();
       consecutiveErrors += 1;
       try {
         await sleep(

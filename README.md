@@ -133,6 +133,31 @@ There are three images, each running as the unprivileged `node` user with `node`
 
 Create a project in the running stack with `docker compose --profile app run --rm api node dist/scripts/create-project.js <name>`.
 
+## Observability
+
+```sh
+pnpm stack:up
+pnpm obs:up
+pnpm obs:down
+```
+
+Each process serves `/metrics` (Prometheus format), `/healthz` and `/readyz` on an ops port of its own, which is never the API's public port: `METRICS_PORT`, 9464 in containers, and 9464, 9465 and 9466 for the API, the relay and the delivery worker under `pnpm dev:*`. It listens on `127.0.0.1` unless `METRICS_HOST` says otherwise.
+
+`pnpm obs:up` starts Prometheus at <http://localhost:9090> and Grafana at <http://localhost:3001>, which opens on the "Hookline – visão geral" dashboard. Prometheus scrapes the containers started by `pnpm stack:up` and RabbitMQ's queue metrics. The dashboard and data sources are provisioned from `infra/observability`, so edit the JSON there rather than in the UI.
+
+| Metric                                                                           | What it shows                                                            |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `hookline_http_request_duration_seconds`                                         | API latency by method, route and status class                            |
+| `hookline_events_accepted_total`, `hookline_deliveries_created_total`            | New events and the deliveries they fanned out to                         |
+| `hookline_outbox_pending`, `hookline_outbox_oldest_pending_age_seconds`          | Rows waiting for the relay; a growing age means it stopped               |
+| `hookline_outbox_published_total`                                                | Messages published, by kind: `ready`, `wait` or `dead`                   |
+| `hookline_delivery_attempts_total`, `hookline_delivery_attempt_duration_seconds` | Attempts by outcome: `succeeded`, `retry`, `dead` or `endpoint_disabled` |
+| `hookline_delivery_first_attempt_delay_seconds`                                  | Time from accepting an event to its first attempt, the delivery SLO      |
+| `hookline_delivery_deferrals_total`                                              | Messages put back without spending an attempt, by reason                 |
+| `hookline_endpoints_circuit_open`                                                | Endpoints with an open circuit breaker                                   |
+
+Labels only take values from small, fixed sets. Per-endpoint detail stays in the database.
+
 ## Published images
 
 Every merge to `main` publishes the three images for `linux/amd64` and `linux/arm64`, tagged `sha-<commit>` and `main`, and a `v*` tag adds its version:
