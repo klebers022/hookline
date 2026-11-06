@@ -1,4 +1,5 @@
 import type { Logger } from 'pino';
+import { shutdownTracing } from './telemetry/trace-context.js';
 
 const SIGNALS = ['SIGINT', 'SIGTERM'] as const;
 
@@ -39,8 +40,12 @@ export function onShutdown(
     }, timeoutMs);
     timer.unref();
 
+    // Spans are sent last, so they include the shutdown's own work.
     close().then(
-      () => {
+      async () => {
+        await shutdownTracing().catch((error: unknown) => {
+          logger.warn({ err: error }, 'Failed to send the last spans');
+        });
         clearTimeout(timer);
         logger.info('Shut down');
         target.exit(0);

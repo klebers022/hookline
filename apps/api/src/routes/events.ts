@@ -3,6 +3,7 @@ import {
   type FastifyPluginAsyncTypebox,
 } from '@fastify/type-provider-typebox';
 import {
+  captureTraceContext,
   DELIVERIES_READY_ROUTING_KEY,
   newId,
   withTransaction,
@@ -36,10 +37,10 @@ async function createDeliveries(
     [deliveryIds, eventId, endpoints.map((endpoint) => endpoint.id)],
   );
   await client.query(
-    `INSERT INTO outbox (delivery_id, routing_key, payload)
-     SELECT id, $2, jsonb_build_object('delivery_id', id, 'attempt', 1)
+    `INSERT INTO outbox (delivery_id, routing_key, payload, trace_context)
+     SELECT id, $2, jsonb_build_object('delivery_id', id, 'attempt', 1), $3
      FROM unnest($1::uuid[]) AS id`,
-    [deliveryIds, DELIVERIES_READY_ROUTING_KEY],
+    [deliveryIds, DELIVERIES_READY_ROUTING_KEY, captureTraceContext()],
   );
   return deliveryIds.length;
 }

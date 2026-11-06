@@ -12,6 +12,11 @@
       "@hookline/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./tracing": {
+      "@hookline/source": "./src/telemetry/tracing.ts",
+      "types": "./dist/telemetry/tracing.d.ts",
+      "default": "./dist/telemetry/tracing.js"
     }
   },
   "scripts": {
@@ -27,6 +32,14 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.301.0",
+    "@opentelemetry/instrumentation": "^0.301.0",
+    "@opentelemetry/instrumentation-http": "^0.301.0",
+    "@opentelemetry/instrumentation-pg": "^0.78.0",
+    "@opentelemetry/instrumentation-pino": "^0.71.0",
+    "@opentelemetry/instrumentation-undici": "^0.35.0",
+    "@opentelemetry/sdk-node": "^0.301.0",
     "amqp-connection-manager": "^5.0.1",
     "amqplib": "^2.2.1",
     "pg": "^8.23.1",

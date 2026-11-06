@@ -1,17 +1,21 @@
 import {
+  captureTraceContext,
   createGuardedLookup,
   declareTopology,
   declareWaitQueues,
   decideNextStep,
   decryptSecret,
+  markSpanFailed,
   DELIVERIES_DEAD_ROUTING_KEY,
   DELIVERIES_EXCHANGE,
   DELIVERIES_READY_QUEUE,
   newId,
   parseRetryDelays,
   pickDelay,
+  setSpanAttributes,
   THROTTLE_DELAY,
   waitRoutingKey,
+  withConsumeSpan,
   withTransaction,
   type Broker,
   type NextStep,
@@ -107,9 +111,10 @@ async function enqueue(
   attempt: number,
 ): Promise<void> {
   await client.query(
-    `INSERT INTO outbox (delivery_id, routing_key, payload)
-     VALUES ($1, $2, jsonb_build_object('delivery_id', $1::uuid, 'attempt', $3::int))`,
-    [deliveryId, routingKey, attempt],
+    `INSERT INTO outbox (delivery_id, routing_key, payload, trace_context)
+     VALUES ($1, $2, jsonb_build_object('delivery_id', $1::uuid, 'attempt', $3::int), $4)`,
+    // The attempt's trace, which the next attempt links to.
+    [deliveryId, routingKey, attempt, captureTraceContext()],
   );
 }
 
@@ -295,21 +300,25 @@ export function startDeliveryWorker({
       attempt <= delivery.attempt_count
     ) {
       metrics.duplicates.inc();
+      setSpanAttributes({ 'hookline.outcome': 'duplicate' });
       return undefined;
     }
     if (delivery.endpoint_status !== 'active') {
       await abandonDelivery(delivery, attempt);
       metrics.abandoned.inc();
+      setSpanAttributes({ 'hookline.outcome': 'abandoned' });
       return undefined;
     }
     // A failing endpoint gets a break instead of more doomed attempts, and
     // one over its rate limit waits, so neither holds back other endpoints.
     if (delivery.circuit_wait_ms !== null) {
       metrics.deferrals.inc({ reason: 'circuit_open' });
+      setSpanAttributes({ 'hookline.outcome': 'deferred:circuit_open' });
       return pickDelay(retryDelays, delivery.circuit_wait_ms);
     }
     if (!rateLimiter.tryTake(delivery.endpoint_id)) {
       metrics.deferrals.inc({ reason: 'rate_limited' });
+      setSpanAttributes({ 'hookline.outcome': 'deferred:rate_limited' });
       return THROTTLE_DELAY;
     }
     if (attempt === 1) {
@@ -342,6 +351,13 @@ export function startDeliveryWorker({
     const next = await recordAttempt(delivery, attempt, result);
     if (next) {
       const outcome = ATTEMPT_OUTCOME[next.action];
+      setSpanAttributes({
+        'hookline.outcome': outcome,
+        ...(result.responseStatus !== null && {
+          'http.response.status_code': result.responseStatus,
+        }),
+        ...(result.errorCode && { 'error.type': result.errorCode }),
+      });
       metrics.attempts.inc({ outcome });
       metrics.attemptDuration.observe({ outcome }, result.durationMs / 1000);
       if (result.errorCode) {
@@ -374,7 +390,12 @@ export function startDeliveryWorker({
         DELIVERIES_EXCHANGE,
         waitRoutingKey(delay),
         message.content,
-        { persistent: true, contentType: 'application/json' },
+        {
+          persistent: true,
+          contentType: 'application/json',
+          // The same attempt, so it stays in the same trace.
+          headers: message.properties.headers,
+        },
         (error) => (error ? reject(error as Error) : resolve()),
       );
     });
@@ -395,6 +416,30 @@ export function startDeliveryWorker({
       return;
     }
 
+    // The first attempt continues the trace that began at the API. A retry
+    // starts a trace of its own, linked to the attempt before it.
+    await withConsumeSpan(
+      `process ${DELIVERIES_READY_QUEUE}`,
+      message.properties.headers,
+      {
+        link: delivery.attempt > 1,
+        attributes: {
+          'messaging.system': 'rabbitmq',
+          'messaging.operation.type': 'process',
+          'messaging.destination.name': DELIVERIES_READY_QUEUE,
+          'hookline.delivery.id': delivery.delivery_id,
+          'hookline.delivery.attempt': delivery.attempt,
+        },
+      },
+      () => settleMessage(channel, message, delivery),
+    );
+  }
+
+  async function settleMessage(
+    channel: ConfirmChannel,
+    message: ConsumeMessage,
+    delivery: DeliveryMessage,
+  ): Promise<void> {
     try {
       const deferral = await processDelivery(delivery);
       if (deferral) {
@@ -413,6 +458,7 @@ export function startDeliveryWorker({
       // failed delivery, so it spends no attempt. Waiting keeps a long outage
       // from turning into a tight loop of returned messages.
       metrics.processingErrors.inc();
+      markSpanFailed(error);
       consecutiveErrors += 1;
       try {
         await sleep(

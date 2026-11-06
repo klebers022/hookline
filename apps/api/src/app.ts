@@ -5,6 +5,7 @@ import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import {
   Counter,
   Histogram,
+  nameServerSpan,
   Registry,
   type Pool,
   type ResolveHost,
@@ -142,6 +143,14 @@ export async function buildApp({
       status: 404,
     }),
   );
+
+  // Fastify knows the route, which the HTTP span from the instrumentation
+  // does not.
+  app.addHook('onRequest', async (request) => {
+    if (request.routeOptions.url) {
+      nameServerSpan(request.method, request.routeOptions.url);
+    }
+  });
 
   app.addHook('onResponse', async (request, reply) => {
     metrics.requestDuration.observe(
