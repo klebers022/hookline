@@ -1,0 +1,109 @@
+# Unit tests for alerts.yml, run by promtool (pnpm obs:test-rules).
+# Each series is a list of samples one evaluation_interval apart.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: the outbox alert waits two minutes past a minute-old row
+    interval: 1m
+    input_series:
+      - series: hookline_outbox_oldest_pending_age_seconds{service="relay"}
+        values: 0 30 61 121 181 241
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: HooklineOutboxStuck
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: HooklineOutboxStuck
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: The outbox has not been published for over a minute
+              description: The oldest pending outbox row is 3m 1s old. Check that the relay is running and can reach RabbitMQ.
+
+  - name: a delivery reaching the DLQ fires at once
+    interval: 1m
+    input_series:
+      - series: hookline_outbox_published_total{kind="dead",service="relay"}
+        values: 0 0 1 1
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: HooklineDeadLetters
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: HooklineDeadLetters
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Deliveries went to the dead letter queue
+              description: 1 deliveries reached the DLQ in the last 10 minutes. GET /v1/deliveries?status=dead lists them.
+
+  - name: slow first attempts break the SLO
+    interval: 1m
+    input_series:
+      # Every first attempt in the 10 s bucket, none under 5 s.
+      - series: hookline_delivery_first_attempt_delay_seconds_bucket{le="5"}
+        values: 0x15
+      - series: hookline_delivery_first_attempt_delay_seconds_bucket{le="10"}
+        values: 0+60x15
+      - series: hookline_delivery_first_attempt_delay_seconds_bucket{le="+Inf"}
+        values: 0+60x15
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: HooklineFirstAttemptSlow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: First attempts start later than the 5 s SLO
+              description: The p99 delay from accepted event to first attempt is 9.95s. Look for a backlog on deliveries.ready or a stuck outbox.
+
+  - name: most attempts failing fires
+    interval: 1m
+    input_series:
+      - series: hookline_delivery_attempts_total{outcome="retry"}
+        values: 0+60x10
+      - series: hookline_delivery_attempts_total{outcome="succeeded"}
+        values: 0+10x10
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HooklineHighFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Most delivery attempts are failing
+              description: 85.71% of the attempts in the last 5 minutes failed.
+
+  - name: a healthy failure rate stays quiet
+    interval: 1m
+    input_series:
+      - series: hookline_delivery_attempts_total{outcome="retry"}
+        values: 0+5x10
+      - series: hookline_delivery_attempts_total{outcome="succeeded"}
+        values: 0+60x10
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HooklineHighFailureRate
+        exp_alerts: []
+
+  - name: a process that cannot be scraped
+    interval: 1m
+    input_series:
+      - series: up{job="hookline",instance="deliver:9464"}
+        values: 1 0 0 0
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: HooklineProcessDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: hookline
+              instance: deliver:9464
+            exp_annotations:
+              summary: deliver:9464 is down
+              description: Prometheus has not been able to scrape deliver:9464 for a minute.

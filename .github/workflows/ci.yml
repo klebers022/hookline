@@ -33,6 +33,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+      # Unit tests for the Prometheus alert rules.
+      - run: docker run --rm -v ./infra/observability/prometheus:/rules -w /rules --entrypoint promtool prom/prometheus:v3.16.0 test rules alerts.test.yml
       - run: docker compose --profile app up -d --build --wait
       - run: node scripts/smoke.mjs
       - if: failure()

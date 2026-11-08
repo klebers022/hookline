@@ -167,6 +167,28 @@ services:
       - ./infra/observability/tempo:/etc/tempo:ro
       - tempo-data:/var/tempo
 
+  loki:
+    image: grafana/loki:3.6.20
+    profiles: [observability]
+    command: ['-config.file=/etc/loki/loki.yml']
+    volumes:
+      - ./infra/observability/loki:/etc/loki:ro
+      - loki-data:/loki
+
+  # Collects the app containers' logs through the Docker socket (read-only)
+  # and pushes them to Loki.
+  alloy:
+    image: grafana/alloy:v1.21.3
+    profiles: [observability]
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./infra/observability/alloy:/etc/alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [loki]
+
   grafana:
     image: grafana/grafana:13.3.0
     profiles: [observability]
@@ -181,10 +203,11 @@ services:
     volumes:
       - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    depends_on: [prometheus, tempo]
+    depends_on: [prometheus, tempo, loki]
 
 volumes:
   postgres-data:
   rabbitmq-data:
   prometheus-data:
   tempo-data:
+  loki-data:

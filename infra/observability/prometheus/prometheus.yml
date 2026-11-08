@@ -3,6 +3,9 @@ global:
   scrape_interval: 5s
   evaluation_interval: 5s
 
+rule_files:
+  - alerts.yml
+
 scrape_configs:
   # Each Hookline process serves /metrics on its internal ops port, which
   # is never published outside the compose network.

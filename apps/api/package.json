@@ -33,6 +33,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch --conditions=@hookline/source --env-file-if-exists=../../.env src/server.ts",
     "migrate": "tsx --conditions=@hookline/source --env-file-if-exists=../../.env src/scripts/migrate.ts",
-    "project:create": "tsx --conditions=@hookline/source --env-file-if-exists=../../.env src/scripts/create-project.ts"
+    "project:create": "tsx --conditions=@hookline/source --env-file-if-exists=../../.env src/scripts/create-project.ts",
+    "retention": "tsx --conditions=@hookline/source --env-file-if-exists=../../.env src/scripts/retention.ts"
   }
 }
