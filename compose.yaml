@@ -18,6 +18,11 @@ x-app-env: &app-env
   # Traces go to Tempo, from the observability profile. While it is not
   # running, the spans are dropped and the app works the same.
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4318}
+  # true turns tracing off, to measure what it costs.
+  OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
+  # The load test (pnpm load:*) raises both, or they would be what it measures.
+  RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-6000}
+  ENDPOINT_RATE_LIMIT_PER_SECOND: ${ENDPOINT_RATE_LIMIT_PER_SECOND:-50}
 
 x-api-image: &api-image
   image: hookline-api:${HOOKLINE_TAG:-local}
@@ -150,6 +155,9 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=7d
+      # Lets k6 push its own numbers, so a load test and the stack's reaction
+      # share one graph.
+      - --web.enable-remote-write-receiver
     ports:
       - '127.0.0.1:9090:9090'
     volumes:
@@ -204,6 +212,18 @@ services:
       - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on: [prometheus, tempo, loki]
+
+  # Load tests, with the "load" profile, run by scripts/load.mjs (pnpm load:*).
+  # Inside the compose network, they reach the API as the stack sees it.
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [load]
+    volumes:
+      - ./load-tests:/scripts:ro
+    environment:
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(50),p(99),max
+      K6_PROMETHEUS_RW_PUSH_INTERVAL: 5s
 
 volumes:
   postgres-data:
