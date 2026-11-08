@@ -9,13 +9,19 @@ import {
   Loading,
   PageHeader,
   Table,
+  Time,
+  Url,
 } from '../components/ui';
-import { formatDate } from '../format';
 
 const TABS = [
   { status: 'dead', label: 'Dead' },
   { status: 'retrying', label: 'Retrying' },
 ] as const;
+
+const EMPTY = {
+  dead: 'No dead deliveries. Every delivery succeeded or is still being tried.',
+  retrying: 'No delivery is waiting for another try.',
+};
 
 // Dead deliveries ran out of attempts; retrying ones are waiting for the
 // next. Both are where someone looks when an endpoint misbehaves.
@@ -29,8 +35,14 @@ export function Failed() {
 
   return (
     <>
-      <PageHeader title="Failed deliveries" />
-      <div className="mb-4 flex gap-1" role="tablist">
+      <PageHeader
+        title="Failed deliveries"
+        description="Deliveries that gave up, and those still waiting for their next try."
+      />
+      <div
+        role="tablist"
+        className="mb-[18px] inline-flex gap-0.5 rounded-lg bg-rule-soft p-[3px]"
+      >
         {TABS.map((tab) => (
           <button
             key={tab.status}
@@ -38,10 +50,10 @@ export function Failed() {
             role="tab"
             aria-selected={status === tab.status}
             onClick={() => setParams({ status: tab.status })}
-            className={`rounded-md px-3 py-1 text-sm ${
+            className={`rounded-md px-3.5 py-[7px] text-sm font-medium ${
               status === tab.status
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-200'
+                ? 'bg-surface text-ink shadow-[0_1px_2px_rgb(24_32_58/0.12)]'
+                : 'text-ink-2 hover:text-ink'
             }`}
           >
             {tab.label}
@@ -53,7 +65,7 @@ export function Failed() {
       ) : list.error ? (
         <ErrorMessage error={list.error} />
       ) : list.rows.length === 0 ? (
-        <Empty>Nothing here.</Empty>
+        <Empty>{EMPTY[status]}</Empty>
       ) : (
         <Table
           head={[
@@ -66,7 +78,7 @@ export function Failed() {
         >
           {list.rows.map((delivery) => (
             <tr key={delivery.id}>
-              <td className="px-4 py-2 font-medium">
+              <td className="font-semibold">
                 <Link
                   to={`/deliveries/${delivery.id}`}
                   className="hover:underline"
@@ -74,19 +86,25 @@ export function Failed() {
                   {delivery.event_type}
                 </Link>
               </td>
-              <td className="px-4 py-2 break-all text-slate-600">
-                {delivery.endpoint_url}
+              <td>
+                <Url url={delivery.endpoint_url} />
               </td>
-              <td className="px-4 py-2">{delivery.attempt_count}</td>
-              <td className="px-4 py-2 text-slate-600">
-                {formatDate(
-                  status === 'dead'
-                    ? delivery.created_at
-                    : delivery.next_attempt_at,
+              <td className="font-mono text-[13px]">
+                {delivery.attempt_count}
+              </td>
+              <td className="whitespace-nowrap text-ink-2">
+                <Time
+                  value={
+                    status === 'dead'
+                      ? delivery.created_at
+                      : delivery.next_attempt_at
+                  }
+                />
+              </td>
+              <td className="text-right">
+                {status === 'dead' && (
+                  <RetryButton deliveryId={delivery.id} size="sm" />
                 )}
-              </td>
-              <td className="px-4 py-2">
-                {status === 'dead' && <RetryButton deliveryId={delivery.id} />}
               </td>
             </tr>
           ))}

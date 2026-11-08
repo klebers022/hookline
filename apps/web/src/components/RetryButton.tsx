@@ -4,7 +4,13 @@ import { Button, ErrorMessage } from './ui';
 
 // A manual retry gives a dead delivery one more attempt. The API answers 409
 // when it cannot (the delivery is not dead, or its endpoint is disabled).
-export function RetryButton({ deliveryId }: { deliveryId: string }) {
+export function RetryButton({
+  deliveryId,
+  size = 'md',
+}: {
+  deliveryId: string;
+  size?: 'md' | 'sm';
+}) {
   const api = useApi();
   const queryClient = useQueryClient();
   const retry = useMutation({
@@ -14,9 +20,10 @@ export function RetryButton({ deliveryId }: { deliveryId: string }) {
   });
 
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className="flex flex-col items-end gap-1.5">
       <Button
-        variant="primary"
+        variant={size === 'sm' ? 'secondary' : 'primary'}
+        size={size}
         disabled={retry.isPending}
         onClick={() => retry.mutate()}
       >

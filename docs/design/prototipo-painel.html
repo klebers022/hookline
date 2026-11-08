@@ -1,0 +1,1798 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hookline painel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ---------- Tokens ---------- */
+      :root {
+        --paper: #f3f5f8; /* fundo */
+        --surface: #ffffff; /* superfícies */
+        --ink: #18203a; /* texto: tinta azul-marinho */
+        --ink-2: #4a5372; /* texto secundário */
+        --ink-3: #7a82a0; /* texto terciário */
+        --rule: #dce1ea; /* linhas */
+        --rule-soft: #eceff4;
+        --stamp: #3346d3; /* carimbo: ação e foco */
+        --stamp-ink: #ffffff;
+        --stamp-wash: #e9ecfc;
+        --ok: #0f8a63;
+        --ok-wash: #e3f4ee;
+        --wait: #b26f06;
+        --wait-wash: #fbf0dc;
+        --bad: #c8372d;
+        --bad-wash: #fbe7e5;
+        --idle: #8a91aa;
+        --idle-wash: #edeff4;
+        --code-bg: #f6f7fa;
+        --sans: 'Schibsted Grotesk', system-ui, sans-serif;
+        --mono: 'JetBrains Mono', ui-monospace, monospace;
+        --r-s: 6px;
+        --r-m: 10px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --paper: #0e1322;
+          --surface: #151b2e;
+          --ink: #e6e9f2;
+          --ink-2: #a9b0c8;
+          --ink-3: #737b97;
+          --rule: #262e47;
+          --rule-soft: #1d2439;
+          --stamp: #7f8cff;
+          --stamp-ink: #0e1322;
+          --stamp-wash: #222a52;
+          --ok: #3fc79a;
+          --ok-wash: #12302a;
+          --wait: #e8a93b;
+          --wait-wash: #33280f;
+          --bad: #f0675c;
+          --bad-wash: #3a1a1c;
+          --idle: #7c84a0;
+          --idle-wash: #20263b;
+          --code-bg: #10162a;
+        }
+      }
+      :root[data-theme='dark'] {
+        --paper: #0e1322;
+        --surface: #151b2e;
+        --ink: #e6e9f2;
+        --ink-2: #a9b0c8;
+        --ink-3: #737b97;
+        --rule: #262e47;
+        --rule-soft: #1d2439;
+        --stamp: #7f8cff;
+        --stamp-ink: #0e1322;
+        --stamp-wash: #222a52;
+        --ok: #3fc79a;
+        --ok-wash: #12302a;
+        --wait: #e8a93b;
+        --wait-wash: #33280f;
+        --bad: #f0675c;
+        --bad-wash: #3a1a1c;
+        --idle: #7c84a0;
+        --idle-wash: #20263b;
+        --code-bg: #10162a;
+      }
+
+      /* ---------- Base ---------- */
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font: 400 15px/1.5 var(--sans);
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      :focus-visible {
+        outline: 2px solid var(--stamp);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+      .mono {
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: -0.01em;
+      }
+      .muted {
+        color: var(--ink-2);
+      }
+      .faint {
+        color: var(--ink-3);
+      }
+      h1 {
+        font-size: 28px;
+        line-height: 1.15;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        margin: 0;
+      }
+      h2 {
+        font-size: 17px;
+        line-height: 1.3;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin: 0;
+      }
+
+      /* Prototype switcher (not part of the product) */
+      .proto {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+        padding: 8px 16px;
+        background: #2a2f45;
+        color: #c9cee0;
+        font-size: 13px;
+      }
+      .proto b {
+        font-weight: 600;
+        margin-right: 8px;
+        color: #fff;
+      }
+      .proto button {
+        font: inherit;
+        color: inherit;
+        background: transparent;
+        border: 0;
+        padding: 4px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .proto button[aria-pressed='true'] {
+        background: #fff;
+        color: #2a2f45;
+      }
+      .proto .sp {
+        flex: 1;
+      }
+
+      /* ---------- App chrome ---------- */
+      .bar {
+        background: var(--surface);
+        border-bottom: 1px solid var(--rule);
+      }
+      .bar-in {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 0 24px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        gap: 28px;
+      }
+      .mark {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 17px;
+        letter-spacing: -0.02em;
+      }
+      .nav {
+        display: flex;
+        gap: 4px;
+        height: 100%;
+      }
+      .nav a {
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        color: var(--ink-2);
+        font-weight: 500;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+      }
+      .nav a:hover {
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .nav a[aria-current='page'] {
+        color: var(--ink);
+        border-bottom-color: var(--stamp);
+      }
+      .nav .count {
+        margin-left: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--bad);
+      }
+      .bar .end {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 14px;
+      }
+      .key-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ink-2);
+      }
+      .key-chip .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--ok);
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 32px 24px 64px;
+      }
+      .screen {
+        display: none;
+      }
+      .screen.on {
+        display: block;
+      }
+
+      /* Header of a page */
+      .head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .crumbs {
+        font-size: 14px;
+        color: var(--ink-3);
+        margin-bottom: 6px;
+      }
+      .crumbs a {
+        color: var(--ink-2);
+      }
+      .sub {
+        margin-top: 6px;
+        color: var(--ink-2);
+        font-size: 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+      }
+
+      /* Buttons */
+      .btn {
+        font: 500 14px/1 var(--sans);
+        padding: 10px 14px;
+        border-radius: var(--r-s);
+        border: 1px solid var(--rule);
+        background: var(--surface);
+        color: var(--ink);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn:hover {
+        border-color: var(--ink-3);
+      }
+      .btn.primary {
+        background: var(--stamp);
+        border-color: var(--stamp);
+        color: var(--stamp-ink);
+      }
+      .btn.primary:hover {
+        filter: brightness(1.08);
+      }
+      .btn.quiet {
+        border-color: transparent;
+        background: transparent;
+        color: var(--ink-2);
+        padding: 8px 10px;
+      }
+      .btn.quiet:hover {
+        color: var(--ink);
+        background: var(--rule-soft);
+      }
+      .btn.danger {
+        color: var(--bad);
+      }
+      .btn.sm {
+        padding: 7px 11px;
+        font-size: 13px;
+      }
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      /* Status: a word with a shape, never colour alone */
+      .st {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 3px 10px 3px 8px;
+        border-radius: 99px;
+        white-space: nowrap;
+      }
+      .st::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .st.ok {
+        color: var(--ok);
+        background: var(--ok-wash);
+      }
+      .st.wait {
+        color: var(--wait);
+        background: var(--wait-wash);
+      }
+      .st.wait::before {
+        background: transparent;
+        border: 2px solid currentColor;
+        width: 9px;
+        height: 9px;
+      }
+      .st.bad {
+        color: var(--bad);
+        background: var(--bad-wash);
+      }
+      .st.bad::before {
+        border-radius: 2px;
+        transform: rotate(45deg);
+      }
+      .st.idle {
+        color: var(--idle);
+        background: var(--idle-wash);
+      }
+
+      /* Lists: one surface, hairline rows (not a card per row) */
+      .sheet {
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-m);
+        overflow: hidden;
+      }
+      .rows {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .rows th {
+        text-align: left;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink-3);
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--rule);
+      }
+      .rows td {
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--rule-soft);
+        vertical-align: middle;
+      }
+      .rows tr:last-child td {
+        border-bottom: 0;
+      }
+      .rows tbody tr:hover {
+        background: var(--code-bg);
+      }
+      .rows .type {
+        font-weight: 600;
+      }
+      .right {
+        text-align: right;
+      }
+      .more {
+        display: flex;
+        justify-content: center;
+        padding: 14px;
+        border-top: 1px solid var(--rule-soft);
+      }
+      .url {
+        font-family: var(--mono);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      .url .host {
+        color: var(--ink);
+      }
+      .url .path {
+        color: var(--ink-3);
+      }
+
+      /* ---------- The route: the one memorable element ----------
+   A delivery's six scheduled stops (now, +1m, +5m, +30m, +2h, +6h) drawn as a
+   tracking line, filled as attempts happen. */
+      .route {
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-m);
+        padding: 26px 26px 22px;
+        margin-bottom: 28px;
+      }
+      .route-head {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 8px 16px;
+        margin-bottom: 26px;
+      }
+      .route-head p {
+        margin: 4px 0 0;
+        color: var(--ink-2);
+        font-size: 14px;
+        max-width: 64ch;
+      }
+      .track {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(var(--n, 6), minmax(0, 1fr));
+      }
+      .stop {
+        position: relative;
+        padding-top: 34px;
+        text-align: left;
+      }
+      .stop::before {
+        /* the line to the next stop */
+        content: '';
+        position: absolute;
+        top: 11px;
+        left: 12px;
+        right: 0;
+        height: 3px;
+        background: var(--rule);
+      }
+      .stop:last-child::before {
+        display: none;
+      }
+      .stop.fail::before {
+        background: var(--bad);
+      }
+      .stop.retry-line::before {
+        background: linear-gradient(90deg, var(--bad), var(--rule));
+      }
+      .stop .node {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        border: 3px solid var(--rule);
+        background: var(--surface);
+        display: grid;
+        place-items: center;
+      }
+      .stop.fail .node {
+        border-color: var(--bad);
+        background: var(--bad);
+      }
+      .stop.fail .node::after {
+        content: '';
+        width: 9px;
+        height: 3px;
+        background: var(--surface);
+        border-radius: 2px;
+      }
+      .stop.done .node {
+        border-color: var(--ok);
+        background: var(--ok);
+      }
+      .stop.done .node::after {
+        content: '';
+        width: 9px;
+        height: 5px;
+        border: solid var(--surface);
+        border-width: 0 0 2.5px 2.5px;
+        transform: rotate(-45deg) translate(1px, -1px);
+      }
+      .stop.next .node {
+        border-color: var(--wait);
+      }
+      .stop.next .node::after {
+        content: '';
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--wait);
+        animation: beat 1.6s ease-in-out infinite;
+      }
+      .stop.manual .node {
+        border-style: dashed;
+      }
+      @keyframes beat {
+        50% {
+          transform: scale(0.55);
+          opacity: 0.5;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .stop.next .node::after {
+          animation: none;
+        }
+      }
+      .stop .when {
+        font-size: 13px;
+        color: var(--ink-3);
+      }
+      .stop .code {
+        font-family: var(--mono);
+        font-size: 18px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+        margin-top: 2px;
+      }
+      .stop.fail .code {
+        color: var(--bad);
+      }
+      .stop.done .code {
+        color: var(--ok);
+      }
+      .stop .meta {
+        font-size: 13px;
+        color: var(--ink-2);
+        padding-right: 10px;
+      }
+
+      /* Mini route for lists: six pips, same grammar */
+      .pips {
+        display: inline-flex;
+        gap: 3px;
+        vertical-align: middle;
+      }
+      .pips i {
+        width: 14px;
+        height: 6px;
+        border-radius: 2px;
+        background: var(--rule);
+      }
+      .pips i.f {
+        background: var(--bad);
+      }
+      .pips i.d {
+        background: var(--ok);
+      }
+      .pips i.n {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px var(--wait);
+      }
+      .pips-label {
+        margin-left: 8px;
+        font-size: 13px;
+        color: var(--ink-3);
+      }
+
+      /* Attempt log */
+      .log {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .log li {
+        display: grid;
+        grid-template-columns: 48px 120px 1fr auto;
+        gap: 4px 16px;
+        align-items: baseline;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--rule-soft);
+      }
+      .log li:last-child {
+        border-bottom: 0;
+      }
+      .log .n {
+        color: var(--ink-3);
+        font-size: 14px;
+      }
+      .log .c {
+        font-family: var(--mono);
+        font-weight: 500;
+      }
+      .log .c.f {
+        color: var(--bad);
+      }
+      .log .c.d {
+        color: var(--ok);
+      }
+      .log .t {
+        color: var(--ink-2);
+        font-size: 14px;
+      }
+      .log .ms {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--ink-3);
+      }
+      .log pre {
+        grid-column: 2 / -1;
+        margin: 6px 0 0;
+      }
+      pre.code {
+        background: var(--code-bg);
+        border: 1px solid var(--rule-soft);
+        border-radius: var(--r-s);
+        padding: 12px 14px;
+        font: 13px/1.6 var(--mono);
+        overflow-x: auto;
+        color: var(--ink);
+      }
+      .k {
+        color: var(--stamp);
+      }
+      .s {
+        color: var(--ok);
+      }
+      .num {
+        color: var(--wait);
+      }
+
+      /* Two-column detail */
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+        gap: 28px;
+        align-items: start;
+      }
+      .section-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      .facts {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px 20px;
+        margin: 0;
+        font-size: 14px;
+      }
+      .facts dt {
+        color: var(--ink-3);
+      }
+      .facts dd {
+        margin: 0;
+      }
+
+      /* Notices */
+      .note {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 14px 16px;
+        border-radius: var(--r-m);
+        font-size: 14px;
+        margin-bottom: 20px;
+      }
+      .note.wait {
+        background: var(--wait-wash);
+        color: var(--ink);
+        border: 1px solid color-mix(in srgb, var(--wait) 30%, transparent);
+      }
+      .note.secret {
+        background: var(--stamp-wash);
+        border: 1px solid color-mix(in srgb, var(--stamp) 30%, transparent);
+        flex-direction: column;
+      }
+      .note strong {
+        font-weight: 600;
+      }
+      .secret-row {
+        display: flex;
+        gap: 8px;
+        width: 100%;
+      }
+      .secret-row code {
+        flex: 1;
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-s);
+        padding: 9px 12px;
+        font: 13px var(--mono);
+        overflow-wrap: anywhere;
+      }
+
+      /* Segmented control */
+      .seg {
+        display: inline-flex;
+        background: var(--rule-soft);
+        border-radius: 8px;
+        padding: 3px;
+        gap: 2px;
+        margin-bottom: 18px;
+      }
+      .seg button {
+        font: 500 14px var(--sans);
+        border: 0;
+        background: transparent;
+        color: var(--ink-2);
+        padding: 7px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .seg button[aria-pressed='true'] {
+        background: var(--surface);
+        color: var(--ink);
+        box-shadow: 0 1px 2px rgba(24, 32, 58, 0.12);
+      }
+      .seg .n {
+        margin-left: 6px;
+        color: var(--ink-3);
+        font-weight: 400;
+      }
+
+      /* Chips for event types */
+      .chip {
+        display: inline-block;
+        font: 12px var(--mono);
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: var(--rule-soft);
+        color: var(--ink-2);
+        margin: 2px 4px 2px 0;
+      }
+      .switch {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        border-radius: 99px;
+        background: var(--rule);
+        border: 0;
+        cursor: pointer;
+        vertical-align: middle;
+      }
+      .switch::after {
+        content: '';
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--surface);
+        transition: transform 0.15s;
+      }
+      .switch[aria-checked='true'] {
+        background: var(--ok);
+      }
+      .switch[aria-checked='true']::after {
+        transform: translateX(16px);
+      }
+      .circuit {
+        font-size: 13px;
+      }
+      .circuit.open {
+        color: var(--bad);
+        font-weight: 500;
+      }
+
+      /* Forms */
+      label.f {
+        display: block;
+        margin-bottom: 14px;
+      }
+      label.f span {
+        display: block;
+        font-size: 14px;
+        font-weight: 500;
+        margin-bottom: 6px;
+      }
+      label.f small {
+        display: block;
+        color: var(--ink-3);
+        font-size: 13px;
+        margin-top: 6px;
+      }
+      input.in,
+      textarea.in {
+        width: 100%;
+        font: 15px var(--sans);
+        color: var(--ink);
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-s);
+        padding: 10px 12px;
+      }
+      textarea.in,
+      input.in.mono {
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+      input.in:focus,
+      textarea.in:focus {
+        outline: none;
+        border-color: var(--stamp);
+        box-shadow: 0 0 0 3px var(--stamp-wash);
+      }
+      .drawer {
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-m);
+        padding: 22px;
+        margin-bottom: 24px;
+      }
+      .drawer h2 {
+        margin-bottom: 16px;
+      }
+      .drawer .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      /* Sign in */
+      .signin {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      .signin .left {
+        padding: 56px 64px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-width: 520px;
+        margin-left: auto;
+        width: 100%;
+      }
+      .signin .left h1 {
+        font-size: 34px;
+        margin: 40px 0 10px;
+      }
+      .signin .left p {
+        color: var(--ink-2);
+        margin: 0 0 28px;
+        max-width: 42ch;
+      }
+      .signin .right {
+        background: var(--ink);
+        color: var(--paper);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 48px;
+        overflow: hidden;
+      }
+      .signin .right svg {
+        width: 100%;
+        max-width: 460px;
+        height: auto;
+      }
+      .signin .fine {
+        margin-top: 18px;
+        font-size: 13px;
+        color: var(--ink-3);
+        display: flex;
+        gap: 8px;
+      }
+
+      @media (max-width: 860px) {
+        .split {
+          grid-template-columns: 1fr;
+        }
+        .signin {
+          grid-template-columns: 1fr;
+        }
+        .signin .right {
+          display: none;
+        }
+        .signin .left {
+          padding: 40px 16px;
+        }
+        .bar-in {
+          padding: 12px 16px 0;
+          gap: 12px;
+          height: auto;
+          flex-wrap: wrap;
+        }
+        .nav {
+          order: 3;
+          width: 100%;
+          height: 44px;
+          overflow-x: auto;
+          margin-left: -12px;
+        }
+        .bar .key-chip {
+          display: none;
+        }
+        main {
+          padding: 24px 16px 48px;
+        }
+        .track {
+          grid-template-columns: 1fr;
+          gap: 0;
+        }
+        .stop {
+          padding: 0 0 18px 40px;
+          min-height: 58px;
+        }
+        .stop::before {
+          top: 25px;
+          bottom: 0;
+          left: 11px;
+          width: 3px;
+          height: auto;
+          right: auto;
+        }
+        .stop.retry-line::before {
+          background: linear-gradient(180deg, var(--bad), var(--rule));
+        }
+        .log li {
+          grid-template-columns: 32px 1fr auto;
+        }
+        .log .t {
+          grid-column: 2 / -1;
+        }
+        .log pre {
+          grid-column: 1 / -1;
+        }
+        .hide-s {
+          display: none;
+        }
+        .rows th,
+        .rows td {
+          padding: 12px 14px;
+        }
+        h1 {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto" role="toolbar" aria-label="Protótipo: escolha a tela">
+      <b>Protótipo</b>
+      <button data-go="signin">Sign in</button>
+      <button data-go="events">Events</button>
+      <button data-go="event">Event</button>
+      <button data-go="delivery" aria-pressed="true">Delivery (dead)</button>
+      <button data-go="retrying">Delivery (retrying)</button>
+      <button data-go="failed">Failed</button>
+      <button data-go="endpoints">Endpoints</button>
+      <span class="sp"></span>
+      <button id="theme">Tema</button>
+    </div>
+
+    <!-- ================= SIGN IN ================= -->
+    <section class="screen" id="signin">
+      <div class="signin">
+        <div class="left">
+          <div class="mark">
+            <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+              <circle cx="4" cy="13" r="3.5" fill="var(--stamp)" />
+              <path d="M7.5 13h11" stroke="var(--stamp)" stroke-width="2.5" />
+              <circle
+                cx="22"
+                cy="13"
+                r="3.5"
+                fill="none"
+                stroke="var(--stamp)"
+                stroke-width="2.5"
+              />
+            </svg>
+            Hookline
+          </div>
+          <h1>Open your project</h1>
+          <p>
+            Paste the API key that
+            <span class="mono">create-project</span> printed. You will see every
+            event you published and what each endpoint answered.
+          </p>
+          <label class="f"
+            ><span>API key</span
+            ><input class="in mono" placeholder="hk_live_…" autocomplete="off"
+          /></label>
+          <button
+            class="btn primary"
+            style="width: 100%; justify-content: center; padding: 12px"
+          >
+            Sign in
+          </button>
+          <p class="fine">
+            The key stays in this tab's memory only. Reloading the page forgets
+            it.
+          </p>
+        </div>
+        <div class="right" aria-hidden="true">
+          <!-- One event fanning out to three endpoints: the product in one picture -->
+          <svg viewBox="0 0 460 300" fill="none">
+            <g
+              font-family="JetBrains Mono, monospace"
+              font-size="12"
+              fill="currentColor"
+            >
+              <rect
+                x="10"
+                y="126"
+                width="120"
+                height="48"
+                rx="8"
+                fill="none"
+                stroke="currentColor"
+                stroke-opacity=".5"
+              />
+              <text x="26" y="155">order.paid</text>
+              <path
+                d="M130 150 C 200 150 200 60 270 60"
+                fill="none"
+                stroke="#3FC79A"
+                stroke-width="2.5"
+              />
+              <path
+                d="M130 150 H 270"
+                fill="none"
+                stroke="#E8A93B"
+                stroke-width="2.5"
+                stroke-dasharray="6 6"
+              />
+              <path
+                d="M130 150 C 200 150 200 240 270 240"
+                fill="none"
+                stroke="#F0675C"
+                stroke-width="2.5"
+              />
+              <circle cx="270" cy="60" r="7" fill="#3FC79A" />
+              <text x="288" y="56" opacity=".9">shop.example</text>
+              <text x="288" y="74" fill="#3FC79A">200 · 1 try</text>
+              <circle
+                cx="270"
+                cy="150"
+                r="7"
+                fill="none"
+                stroke="#E8A93B"
+                stroke-width="2.5"
+              />
+              <text x="288" y="146" opacity=".9">erp.acme.io</text>
+              <text x="288" y="164" fill="#E8A93B">retry in 28m</text>
+              <circle cx="270" cy="240" r="7" fill="#F0675C" />
+              <text x="288" y="236" opacity=".9">crm.example</text>
+              <text x="288" y="254" fill="#F0675C">dead · 6 tries</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- App chrome shared by the signed-in screens -->
+    <div id="chrome">
+      <header class="bar">
+        <div class="bar-in">
+          <a class="mark" href="#">
+            <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true">
+              <circle cx="4" cy="13" r="3.5" fill="var(--stamp)" />
+              <path d="M7.5 13h11" stroke="var(--stamp)" stroke-width="2.5" />
+              <circle
+                cx="22"
+                cy="13"
+                r="3.5"
+                fill="none"
+                stroke="var(--stamp)"
+                stroke-width="2.5"
+              />
+            </svg>
+            Hookline
+          </a>
+          <nav class="nav" aria-label="Main">
+            <a href="#" data-nav="events">Events</a>
+            <a href="#" data-nav="failed">Failed<span class="count">3</span></a>
+            <a href="#" data-nav="endpoints">Endpoints</a>
+          </nav>
+          <div class="end">
+            <span class="key-chip"
+              ><span class="dot"></span
+              ><span class="mono">hk_live_8f3a…</span></span
+            >
+            <button class="btn quiet sm">Sign out</button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <!-- ================= EVENTS ================= -->
+        <section class="screen" id="events">
+          <div class="head">
+            <div>
+              <h1>Events</h1>
+              <div class="sub">
+                Everything this project published, newest first.
+              </div>
+            </div>
+            <button
+              class="btn primary"
+              onclick="
+                document.getElementById('pub').hidden =
+                  !document.getElementById('pub').hidden
+              "
+            >
+              Send test event
+            </button>
+          </div>
+          <form class="drawer" id="pub" hidden onsubmit="return false;">
+            <h2>Send a test event</h2>
+            <div class="split" style="gap: 20px">
+              <div>
+                <label class="f"
+                  ><span>Type</span
+                  ><input class="in mono" value="order.paid" /><small
+                    >Endpoints subscribed to this type receive it.</small
+                  ></label
+                >
+              </div>
+              <label class="f"
+                ><span>Payload</span
+                ><textarea class="in" rows="4">
+{ "order_id": 1042, "total": 189.90 }</textarea>
+              </label>
+            </div>
+            <div class="actions">
+              <button class="btn primary">Publish</button
+              ><button class="btn" type="button">Cancel</button>
+            </div>
+          </form>
+          <div class="sheet">
+            <table class="rows">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Published</th>
+                  <th class="hide-s">Event ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="event">order.paid</a>
+                  </td>
+                  <td class="muted" title="8 Nov 2026, 19:03:22">2 min ago</td>
+                  <td class="hide-s mono faint">
+                    01936b2e-7c41-7a9e-b3d2-4f0c9a51e8d7
+                  </td>
+                </tr>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="event">order.refunded</a>
+                  </td>
+                  <td class="muted">14 min ago</td>
+                  <td class="hide-s mono faint">
+                    01936b23-11f0-7d2c-8a6e-2b9f7c1d0e44
+                  </td>
+                </tr>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="event">customer.created</a>
+                  </td>
+                  <td class="muted">38 min ago</td>
+                  <td class="hide-s mono faint">
+                    01936b0d-a8b2-73f1-9c04-6e1d2a7b5f90
+                  </td>
+                </tr>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="event">invoice.finalized</a>
+                  </td>
+                  <td class="muted">1 h ago</td>
+                  <td class="hide-s mono faint">
+                    01936ae1-4d7e-7b88-a2f3-91c0e6d4b217
+                  </td>
+                </tr>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="event">order.paid</a>
+                  </td>
+                  <td class="muted">Yesterday, 22:41</td>
+                  <td class="hide-s mono faint">
+                    019369c2-f03a-7e15-b6d9-3a8e0f2c7d61
+                  </td>
+                </tr>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="event">subscription.renewed</a>
+                  </td>
+                  <td class="muted">Yesterday, 18:07</td>
+                  <td class="hide-s mono faint">
+                    0193698b-2e6c-7a40-8d1f-c5b7e9a03f28
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="more"><button class="btn sm">Load more</button></div>
+          </div>
+        </section>
+
+        <!-- ================= EVENT DETAIL ================= -->
+        <section class="screen" id="event">
+          <div class="head">
+            <div>
+              <div class="crumbs">
+                <a href="#" data-to="events">Events</a> /
+              </div>
+              <h1>order.paid</h1>
+              <div class="sub">
+                <span>Published 8 Nov, 19:03:22</span
+                ><span class="mono faint"
+                  >01936b2e-7c41-7a9e-b3d2-4f0c9a51e8d7</span
+                >
+              </div>
+            </div>
+          </div>
+          <div class="split">
+            <div>
+              <div class="section-title">
+                <h2>Sent to 3 endpoints</h2>
+                <span class="faint" style="font-size: 13px"
+                  >Updates every 3 s until all finish</span
+                >
+              </div>
+              <div class="sheet">
+                <table class="rows">
+                  <tbody>
+                    <tr>
+                      <td>
+                        <a href="#" data-to="delivery" class="url"
+                          ><span class="host">shop.example.com</span
+                          ><span class="path">/webhooks</span></a
+                        >
+                        <div style="margin-top: 6px">
+                          <span class="pips"
+                            ><i class="d"></i><i></i><i></i><i></i><i></i
+                            ><i></i></span
+                          ><span class="pips-label"
+                            >Delivered on the 1st try</span
+                          >
+                        </div>
+                      </td>
+                      <td class="right">
+                        <span class="st ok">succeeded</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <a href="#" data-to="delivery" class="url"
+                          ><span class="host">erp.acme.io</span
+                          ><span class="path">/hooks/hookline</span></a
+                        >
+                        <div style="margin-top: 6px">
+                          <span class="pips"
+                            ><i class="f"></i><i class="f"></i><i class="f"></i
+                            ><i class="n"></i><i></i><i></i></span
+                          ><span class="pips-label">Next try in 28 min</span>
+                        </div>
+                      </td>
+                      <td class="right">
+                        <span class="st wait">retrying</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <a href="#" data-to="delivery" class="url"
+                          ><span class="host">crm.example.org</span
+                          ><span class="path">/in/orders</span></a
+                        >
+                        <div style="margin-top: 6px">
+                          <span class="pips"
+                            ><i class="f"></i><i class="f"></i><i class="f"></i
+                            ><i class="f"></i><i class="f"></i
+                            ><i class="f"></i></span
+                          ><span class="pips-label">Gave up after 6 tries</span>
+                        </div>
+                      </td>
+                      <td class="right"><span class="st bad">dead</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <div class="section-title">
+                <h2>Payload</h2>
+                <button class="btn quiet sm">Copy</button>
+              </div>
+              <pre class="code">{
+  <span class="k">"order_id"</span>: <span class="num">1042</span>,
+  <span class="k">"total"</span>: <span class="num">189.90</span>,
+  <span class="k">"currency"</span>: <span class="s">"BRL"</span>,
+  <span class="k">"customer"</span>: {
+    <span class="k">"id"</span>: <span class="s">"cus_7Hq2"</span>,
+    <span class="k">"email"</span>: <span class="s">"ana@example.com"</span>
+  }
+}</pre>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= DELIVERY DETAIL ================= -->
+        <section class="screen on" id="delivery">
+          <div class="head">
+            <div>
+              <div class="crumbs">
+                <a href="#" data-to="events">Events</a> /
+                <a href="#" data-to="event">order.paid</a> /
+              </div>
+              <h1
+                class="url"
+                style="
+                  font-size: 24px;
+                  font-family: var(--mono);
+                  letter-spacing: -0.03em;
+                "
+              >
+                <span class="host">crm.example.org</span
+                ><span class="path">/in/orders</span>
+              </h1>
+              <div class="sub">
+                <span class="st bad">dead</span
+                ><span>Last try 9 Nov, 01:39</span>
+              </div>
+            </div>
+            <button class="btn primary">Retry</button>
+          </div>
+
+          <div class="route">
+            <div class="route-head">
+              <div>
+                <h2>All 6 tries failed</h2>
+                <p>
+                  Hookline tried for 8 h 36 min, waiting longer after each
+                  failure. Fix the endpoint, then retry: it gets one more try.
+                </p>
+              </div>
+            </div>
+            <ol class="track" style="--n: 6">
+              <li class="stop fail">
+                <span class="node"></span>
+                <div class="when">Right away</div>
+                <div class="code">500</div>
+                <div class="meta">19:03 · 42 ms</div>
+              </li>
+              <li class="stop fail">
+                <span class="node"></span>
+                <div class="when">After 1 min</div>
+                <div class="code">500</div>
+                <div class="meta">19:04 · 38 ms</div>
+              </li>
+              <li class="stop fail">
+                <span class="node"></span>
+                <div class="when">After 5 min</div>
+                <div class="code">503</div>
+                <div class="meta">19:09 · 51 ms</div>
+              </li>
+              <li class="stop fail">
+                <span class="node"></span>
+                <div class="when">After 30 min</div>
+                <div class="code">Timeout</div>
+                <div class="meta">19:39 · 10 s</div>
+              </li>
+              <li class="stop fail">
+                <span class="node"></span>
+                <div class="when">After 2 h</div>
+                <div class="code">500</div>
+                <div class="meta">21:39 · 40 ms</div>
+              </li>
+              <li class="stop fail">
+                <span class="node"></span>
+                <div class="when">After 6 h</div>
+                <div class="code">500</div>
+                <div class="meta">01:39 · 44 ms</div>
+              </li>
+            </ol>
+          </div>
+
+          <div class="split">
+            <div>
+              <div class="section-title">
+                <h2>What the endpoint answered</h2>
+              </div>
+              <div class="sheet">
+                <ol class="log">
+                  <li>
+                    <span class="n">6</span><span class="c f">500</span
+                    ><span class="t">9 Nov, 01:39:26</span
+                    ><span class="ms">44 ms</span>
+                    <pre class="code">{"error":"database is locked"}</pre>
+                  </li>
+                  <li>
+                    <span class="n">5</span><span class="c f">500</span
+                    ><span class="t">8 Nov, 21:39:25</span
+                    ><span class="ms">40 ms</span>
+                    <pre class="code">{"error":"database is locked"}</pre>
+                  </li>
+                  <li>
+                    <span class="n">4</span><span class="c f">TIMEOUT</span
+                    ><span class="t">8 Nov, 19:39:24</span
+                    ><span class="ms">10 000 ms</span>
+                  </li>
+                  <li>
+                    <span class="n">3</span><span class="c f">503</span
+                    ><span class="t">8 Nov, 19:09:23</span
+                    ><span class="ms">51 ms</span>
+                    <pre class="code">
+&lt;html&gt;Service Unavailable&lt;/html&gt;</pre>
+                  </li>
+                  <li>
+                    <span class="n">2</span><span class="c f">500</span
+                    ><span class="t">8 Nov, 19:04:22</span
+                    ><span class="ms">38 ms</span>
+                    <pre class="code">{"error":"database is locked"}</pre>
+                  </li>
+                  <li>
+                    <span class="n">1</span><span class="c f">500</span
+                    ><span class="t">8 Nov, 19:03:22</span
+                    ><span class="ms">42 ms</span>
+                    <pre class="code">{"error":"database is locked"}</pre>
+                  </li>
+                </ol>
+              </div>
+            </div>
+            <div>
+              <div class="section-title"><h2>Details</h2></div>
+              <div class="sheet" style="padding: 18px">
+                <dl class="facts">
+                  <dt>Event</dt>
+                  <dd><a href="#" data-to="event">order.paid</a></dd>
+                  <dt>Endpoint</dt>
+                  <dd><a href="#" data-to="endpoints">Open endpoint</a></dd>
+                  <dt>Delivery ID</dt>
+                  <dd class="mono" style="overflow-wrap: anywhere">
+                    01936b2e-9a10-7c55-b1e8-0d4f6c2a9b73
+                  </dd>
+                  <dt>Created</dt>
+                  <dd>8 Nov, 19:03:22</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= DELIVERY DETAIL, STILL RETRYING ================= -->
+        <section class="screen" id="retrying">
+          <div class="head">
+            <div>
+              <div class="crumbs">
+                <a href="#" data-to="events">Events</a> /
+                <a href="#" data-to="event">order.paid</a> /
+              </div>
+              <h1
+                class="url"
+                style="
+                  font-size: 24px;
+                  font-family: var(--mono);
+                  letter-spacing: -0.03em;
+                "
+              >
+                <span class="host">erp.acme.io</span
+                ><span class="path">/hooks/hookline</span>
+              </h1>
+              <div class="sub">
+                <span class="st wait">retrying</span
+                ><span>3 of 6 tries used</span>
+              </div>
+            </div>
+          </div>
+          <div class="note wait">
+            <span class="st wait" style="flex: none">circuit open</span>
+            <span
+              >This endpoint failed 5 times in a row across your events, so
+              Hookline is holding its deliveries until <strong>19:14</strong>.
+              The held try is not counted.</span
+            >
+          </div>
+          <div class="route">
+            <div class="route-head">
+              <div>
+                <h2>Next try after 19:14</h2>
+                <p>
+                  If it fails, Hookline waits 2 h, then 6 h. After the 6th
+                  failure the delivery is marked dead.
+                </p>
+              </div>
+            </div>
+            <ol class="track" style="--n: 6">
+              <li class="stop fail">
+                <span class="node"></span>
+                <div class="when">Right away</div>
+                <div class="code">500</div>
+                <div class="meta">19:03 · 42 ms</div>
+              </li>
+              <li class="stop fail">
+                <span class="node"></span>
+                <div class="when">After 1 min</div>
+                <div class="code">500</div>
+                <div class="meta">19:04 · 38 ms</div>
+              </li>
+              <li class="stop fail retry-line">
+                <span class="node"></span>
+                <div class="when">After 5 min</div>
+                <div class="code">502</div>
+                <div class="meta">19:09 · 61 ms</div>
+              </li>
+              <li class="stop next">
+                <span class="node"></span>
+                <div class="when">After 30 min</div>
+                <div class="code" style="color: var(--wait)">Waiting</div>
+                <div class="meta">held until 19:14</div>
+              </li>
+              <li class="stop">
+                <span class="node"></span>
+                <div class="when">After 2 h</div>
+                <div class="code faint">·</div>
+              </li>
+              <li class="stop">
+                <span class="node"></span>
+                <div class="when">After 6 h</div>
+                <div class="code faint">·</div>
+              </li>
+            </ol>
+          </div>
+        </section>
+
+        <!-- ================= FAILED ================= -->
+        <section class="screen" id="failed">
+          <div class="head">
+            <div>
+              <h1>Failed deliveries</h1>
+              <div class="sub">
+                Deliveries that gave up, and those still waiting for their next
+                try.
+              </div>
+            </div>
+          </div>
+          <div class="seg" role="group" aria-label="Show">
+            <button aria-pressed="true">Dead<span class="n">3</span></button>
+            <button aria-pressed="false">
+              Retrying<span class="n">2</span>
+            </button>
+          </div>
+          <div class="note wait">
+            <span class="st wait" style="flex: none">circuit open</span>
+            <span
+              ><strong>erp.acme.io</strong> failed 5 times in a row, so Hookline
+              is holding its deliveries until 19:14. They have not used up their
+              tries.</span
+            >
+          </div>
+          <div class="sheet">
+            <table class="rows">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Endpoint</th>
+                  <th class="hide-s">Tries</th>
+                  <th class="hide-s">Last try</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="delivery">order.paid</a>
+                  </td>
+                  <td class="url">
+                    <span class="host">crm.example.org</span
+                    ><span class="path">/in/orders</span>
+                  </td>
+                  <td class="hide-s">
+                    <span class="pips"
+                      ><i class="f"></i><i class="f"></i><i class="f"></i
+                      ><i class="f"></i><i class="f"></i><i class="f"></i
+                    ></span>
+                  </td>
+                  <td class="hide-s muted">7 h ago</td>
+                  <td class="right"><button class="btn sm">Retry</button></td>
+                </tr>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="delivery">invoice.finalized</a>
+                  </td>
+                  <td class="url">
+                    <span class="host">crm.example.org</span
+                    ><span class="path">/in/invoices</span>
+                  </td>
+                  <td class="hide-s">
+                    <span class="pips"
+                      ><i class="f"></i><i class="f"></i><i class="f"></i
+                      ><i class="f"></i><i class="f"></i><i class="f"></i
+                    ></span>
+                  </td>
+                  <td class="hide-s muted">9 h ago</td>
+                  <td class="right"><button class="btn sm">Retry</button></td>
+                </tr>
+                <tr>
+                  <td class="type">
+                    <a href="#" data-to="delivery">customer.created</a>
+                  </td>
+                  <td class="url">
+                    <span class="host">old.partner.net</span
+                    ><span class="path">/hook</span>
+                  </td>
+                  <td class="hide-s">
+                    <span class="pips"
+                      ><i class="f"></i><i></i><i></i><i></i><i></i
+                      ><i></i></span
+                    ><span class="pips-label">410 Gone</span>
+                  </td>
+                  <td class="hide-s muted">Yesterday</td>
+                  <td class="right">
+                    <button
+                      class="btn sm"
+                      disabled
+                      title="The endpoint is disabled. Enable it first."
+                    >
+                      Retry
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ================= ENDPOINTS ================= -->
+        <section class="screen" id="endpoints">
+          <div class="head">
+            <div>
+              <h1>Endpoints</h1>
+              <div class="sub">
+                Where Hookline sends your events, and how each one is doing.
+              </div>
+            </div>
+            <button class="btn primary">Add endpoint</button>
+          </div>
+
+          <div class="note secret">
+            <div>
+              <strong>Copy the signing secret now.</strong> It is shown only
+              this once. Your endpoint uses it to check that a request came from
+              Hookline.
+            </div>
+            <div class="secret-row">
+              <code>whsec_q8LmZt3Rx0vB6nYc2KdPe9WfHs4Ju1Ga</code
+              ><button class="btn primary sm">Copy</button>
+            </div>
+          </div>
+
+          <div class="sheet">
+            <table class="rows">
+              <thead>
+                <tr>
+                  <th>URL</th>
+                  <th class="hide-s">Event types</th>
+                  <th>Health</th>
+                  <th>Active</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="url">
+                    <span class="host">shop.example.com</span
+                    ><span class="path">/webhooks</span>
+                  </td>
+                  <td class="hide-s">
+                    <span class="chip">order.paid</span
+                    ><span class="chip">order.refunded</span>
+                  </td>
+                  <td><span class="circuit">Healthy</span></td>
+                  <td>
+                    <button
+                      class="switch"
+                      role="switch"
+                      aria-checked="true"
+                      aria-label="Active"
+                    ></button>
+                  </td>
+                  <td class="right">
+                    <button class="btn quiet sm">Rotate secret</button
+                    ><button class="btn quiet sm danger">Delete</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="url">
+                    <span class="host">erp.acme.io</span
+                    ><span class="path">/hooks/hookline</span>
+                  </td>
+                  <td class="hide-s">
+                    <span class="chip">order.paid</span
+                    ><span class="chip">invoice.finalized</span>
+                  </td>
+                  <td>
+                    <span class="circuit open">Paused until 19:14</span>
+                    <div class="faint" style="font-size: 12px">
+                      5 failures in a row
+                    </div>
+                  </td>
+                  <td>
+                    <button
+                      class="switch"
+                      role="switch"
+                      aria-checked="true"
+                      aria-label="Active"
+                    ></button>
+                  </td>
+                  <td class="right">
+                    <button class="btn quiet sm">Rotate secret</button
+                    ><button class="btn quiet sm danger">Delete</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="url">
+                    <span class="host">old.partner.net</span
+                    ><span class="path">/hook</span>
+                  </td>
+                  <td class="hide-s">
+                    <span class="chip">customer.created</span>
+                  </td>
+                  <td><span class="circuit faint">Off</span></td>
+                  <td>
+                    <button
+                      class="switch"
+                      role="switch"
+                      aria-checked="false"
+                      aria-label="Active"
+                    ></button>
+                  </td>
+                  <td class="right">
+                    <button class="btn quiet sm">Rotate secret</button
+                    ><button class="btn quiet sm danger">Delete</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const show = (id) => {
+        document
+          .querySelectorAll('.screen')
+          .forEach((s) => s.classList.toggle('on', s.id === id));
+        document.getElementById('chrome').hidden = id === 'signin';
+        document
+          .querySelectorAll('[data-go]')
+          .forEach((b) => b.setAttribute('aria-pressed', b.dataset.go === id));
+        const navId = ['event', 'delivery', 'retrying'].includes(id)
+          ? 'events'
+          : id;
+        document.querySelectorAll('[data-nav]').forEach((a) => {
+          if (a.dataset.nav === navId) a.setAttribute('aria-current', 'page');
+          else a.removeAttribute('aria-current');
+        });
+        window.scrollTo(0, 0);
+      };
+      document.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-go],[data-to],[data-nav]');
+        if (!t) return;
+        e.preventDefault();
+        show(t.dataset.go || t.dataset.to || t.dataset.nav);
+      });
+      document.getElementById('theme').onclick = () => {
+        const r = document.documentElement;
+        const dark = r.dataset.theme
+          ? r.dataset.theme === 'dark'
+          : matchMedia('(prefers-color-scheme: dark)').matches;
+        r.dataset.theme = dark ? 'light' : 'dark';
+      };
+      show(location.hash.slice(1) || 'delivery');
+    </script>
+  </body>
+</html>

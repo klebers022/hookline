@@ -1,1 +1,96 @@
+@import '@fontsource-variable/schibsted-grotesk';
+@import '@fontsource-variable/jetbrains-mono';
 @import 'tailwindcss';
+
+/* The dashboard's palette (docs/design/prototipo-painel.html). Each colour
+   is a variable that the dark theme redefines, and Tailwind reads it through
+   @theme inline, so `bg-paper` or `text-ink` follow the theme by themselves.
+   The fonts are bundled with the build: the CSP only allows 'self'. */
+:root {
+  --paper: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #18203a;
+  --ink-2: #4a5372;
+  --ink-3: #6b7391;
+  --rule: #dce1ea;
+  --rule-soft: #eceff4;
+  --stamp: #3346d3;
+  --stamp-ink: #ffffff;
+  --stamp-wash: #e9ecfc;
+  --ok: #0f8a63;
+  --ok-wash: #e3f4ee;
+  --wait: #a36504;
+  --wait-wash: #fbf0dc;
+  --bad: #c8372d;
+  --bad-wash: #fbe7e5;
+  --idle: #6b7391;
+  --idle-wash: #edeff4;
+  --code: #f6f7fa;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e1322;
+    --surface: #151b2e;
+    --ink: #e6e9f2;
+    --ink-2: #a9b0c8;
+    --ink-3: #8088a5;
+    --rule: #262e47;
+    --rule-soft: #1d2439;
+    --stamp: #7f8cff;
+    --stamp-ink: #0e1322;
+    --stamp-wash: #222a52;
+    --ok: #3fc79a;
+    --ok-wash: #12302a;
+    --wait: #e8a93b;
+    --wait-wash: #33280f;
+    --bad: #f0675c;
+    --bad-wash: #3a1a1c;
+    --idle: #8a92ad;
+    --idle-wash: #20263b;
+    --code: #10162a;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --font-sans:
+    'Schibsted Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-stamp: var(--stamp);
+  --color-stamp-ink: var(--stamp-ink);
+  --color-stamp-wash: var(--stamp-wash);
+  --color-ok: var(--ok);
+  --color-ok-wash: var(--ok-wash);
+  --color-wait: var(--wait);
+  --color-wait-wash: var(--wait-wash);
+  --color-bad: var(--bad);
+  --color-bad-wash: var(--bad-wash);
+  --color-idle: var(--idle);
+  --color-idle-wash: var(--idle-wash);
+  --color-code: var(--code);
+}
+
+@layer base {
+  body {
+    @apply bg-paper font-sans text-[15px] leading-normal text-ink antialiased;
+  }
+  h1 {
+    @apply text-[28px] leading-tight font-bold tracking-[-0.025em];
+  }
+  h2 {
+    @apply text-[17px] leading-snug font-semibold tracking-[-0.01em];
+  }
+  :focus-visible {
+    @apply rounded-sm outline-2 outline-offset-2 outline-stamp;
+  }
+}

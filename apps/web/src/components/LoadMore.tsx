@@ -14,7 +14,11 @@ export function LoadMore({
   }
   return (
     <div className="mt-4 flex justify-center">
-      <Button disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
+      <Button
+        size="sm"
+        disabled={isFetchingNextPage}
+        onClick={() => fetchNextPage()}
+      >
         {isFetchingNextPage ? 'Loading…' : 'Load more'}
       </Button>
     </div>

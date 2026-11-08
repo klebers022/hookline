@@ -9,12 +9,14 @@ import {
   Button,
   Empty,
   ErrorMessage,
-  inputClass,
+  Field,
+  formClass,
   Loading,
+  monoInputClass,
   PageHeader,
   Table,
+  Time,
 } from '../components/ui';
-import { formatDate } from '../format';
 
 export function Events() {
   const [publishing, setPublishing] = useState(false);
@@ -22,7 +24,10 @@ export function Events() {
 
   return (
     <>
-      <PageHeader title="Events">
+      <PageHeader
+        title="Events"
+        description="Everything this project published, newest first."
+      >
         <Button variant="primary" onClick={() => setPublishing(!publishing)}>
           Send test event
         </Button>
@@ -33,22 +38,22 @@ export function Events() {
       ) : list.error ? (
         <ErrorMessage error={list.error} />
       ) : list.rows.length === 0 ? (
-        <Empty>No events yet. Publish one with POST /v1/events.</Empty>
+        <Empty>
+          No events yet. Send a test event, or publish one with POST /v1/events.
+        </Empty>
       ) : (
-        <Table head={['Type', 'Created', 'ID']}>
+        <Table head={['Type', 'Published', 'Event ID']}>
           {list.rows.map((event) => (
-            <tr key={event.id} className="hover:bg-slate-50">
-              <td className="px-4 py-2 font-medium">
+            <tr key={event.id}>
+              <td className="font-semibold">
                 <Link to={`/events/${event.id}`} className="hover:underline">
                   {event.type}
                 </Link>
               </td>
-              <td className="px-4 py-2 text-slate-600">
-                {formatDate(event.created_at)}
+              <td className="whitespace-nowrap text-ink-2">
+                <Time value={event.created_at} />
               </td>
-              <td className="px-4 py-2 font-mono text-xs text-slate-500">
-                {event.id}
-              </td>
+              <td className="font-mono text-[13px] text-ink-3">{event.id}</td>
             </tr>
           ))}
         </Table>
@@ -89,30 +94,24 @@ function PublishForm({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="mb-6 space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200"
-    >
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-slate-700">Type</span>
+    <form onSubmit={submit} className={formClass}>
+      <h2>Send a test event</h2>
+      <Field label="Type" hint="Endpoints subscribed to this type receive it.">
         <input
           required
           value={type}
           onChange={(event) => setType(event.target.value)}
-          className={inputClass}
+          className={monoInputClass}
         />
-      </label>
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-slate-700">
-          Payload (JSON object)
-        </span>
+      </Field>
+      <Field label="Payload (JSON object)">
         <textarea
           rows={5}
           value={payload}
           onChange={(event) => setPayload(event.target.value)}
-          className={`${inputClass} font-mono`}
+          className={monoInputClass}
         />
-      </label>
+      </Field>
       {invalid && <ErrorMessage error={new Error(invalid)} />}
       {publish.error && <ErrorMessage error={publish.error} />}
       <div className="flex gap-2">

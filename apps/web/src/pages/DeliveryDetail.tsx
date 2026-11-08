@@ -9,11 +9,14 @@ import {
 import { useApi } from '../auth';
 import { RetryButton } from '../components/RetryButton';
 import {
+  codeClass,
   Empty,
   ErrorMessage,
   Loading,
   PageHeader,
   StatusBadge,
+  Time,
+  Url,
 } from '../components/ui';
 import { formatDate } from '../format';
 
@@ -34,44 +37,83 @@ export function DeliveryDetail() {
     return <ErrorMessage error={delivery.error} />;
   }
   const { data } = delivery;
+  const { attempts } = data;
   return (
     <>
       <PageHeader
+        crumbs={
+          <>
+            <Link to="/events" className="text-ink-2 hover:underline">
+              Events
+            </Link>{' '}
+            /{' '}
+            <Link
+              to={`/events/${data.event_id}`}
+              className="text-ink-2 hover:underline"
+            >
+              {data.event_type}
+            </Link>{' '}
+            /
+          </>
+        }
         title={
-          <span className="flex items-center gap-3">
-            Delivery <StatusBadge status={data.status} />
-          </span>
+          <Url
+            url={data.endpoint_url}
+            className="text-2xl tracking-[-0.03em]"
+          />
+        }
+        description={
+          <>
+            <StatusBadge status={data.status} />
+            <span>
+              {data.attempts.length === 1
+                ? '1 attempt'
+                : `${data.attempts.length} attempts`}
+            </span>
+          </>
         }
       >
         {data.status === 'dead' && <RetryButton deliveryId={data.id} />}
       </PageHeader>
-      <dl className="mb-6 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
-        <dt className="text-slate-500">Event</dt>
-        <dd>
-          <Link to={`/events/${data.event_id}`} className="hover:underline">
-            {data.event_type}
-          </Link>
-        </dd>
-        <dt className="text-slate-500">Endpoint</dt>
-        <dd className="break-all">{data.endpoint_url}</dd>
-        <dt className="text-slate-500">Next attempt</dt>
-        <dd>{formatDate(data.next_attempt_at)}</dd>
-        <dt className="text-slate-500">Delivered</dt>
-        <dd>{formatDate(data.delivered_at)}</dd>
-      </dl>
 
-      <h2 className="mb-2 text-sm font-semibold text-slate-700">
-        Attempts ({data.attempts.length})
-      </h2>
-      {data.attempts.length === 0 ? (
-        <Empty>No attempt yet.</Empty>
-      ) : (
-        <ol className="space-y-2">
-          {data.attempts.map((attempt) => (
-            <AttemptItem key={attempt.attempt_number} attempt={attempt} />
-          ))}
-        </ol>
-      )}
+      <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <section>
+          <h2 className="mb-3">What the endpoint answered</h2>
+          {attempts.length === 0 ? (
+            <Empty>No attempt yet. The first one starts within seconds.</Empty>
+          ) : (
+            <ol className="overflow-hidden rounded-[10px] border border-rule bg-surface">
+              {attempts.map((attempt) => (
+                <AttemptItem key={attempt.attempt_number} attempt={attempt} />
+              ))}
+            </ol>
+          )}
+        </section>
+
+        <section>
+          <h2 className="mb-3">Details</h2>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 rounded-[10px] border border-rule bg-surface p-[18px] text-sm">
+            <dt className="text-ink-3">Event</dt>
+            <dd>
+              <Link to={`/events/${data.event_id}`} className="hover:underline">
+                {data.event_type}
+              </Link>
+            </dd>
+            <dt className="text-ink-3">Next attempt</dt>
+            <dd>
+              <Time value={data.next_attempt_at} />
+            </dd>
+            <dt className="text-ink-3">Delivered</dt>
+            <dd>{formatDate(data.delivered_at)}</dd>
+            <dt className="text-ink-3">Created</dt>
+            <dd>{formatDate(data.created_at)}</dd>
+            <dt className="text-ink-3">Delivery ID</dt>
+            <dd className="font-mono text-[13px] [overflow-wrap:anywhere]">
+              {data.id}
+            </dd>
+          </dl>
+        </section>
+      </div>
     </>
   );
 }
@@ -82,23 +124,25 @@ function AttemptItem({ attempt }: { attempt: Attempt }) {
   return (
     <li
       data-testid="attempt"
-      className="rounded-lg bg-white p-3 text-sm ring-1 ring-slate-200"
+      className="border-b border-rule-soft px-[18px] py-3.5 last:border-b-0"
     >
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span className="font-medium">#{attempt.attempt_number}</span>
-        <span className={ok ? 'text-emerald-700' : 'font-medium text-red-700'}>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className="w-6 text-sm text-ink-3">{attempt.attempt_number}</span>
+        <span
+          className={`min-w-24 font-mono font-medium ${ok ? 'text-ok' : 'text-bad'}`}
+        >
           {status ?? attempt.error_code ?? '—'}
+          {status !== null && attempt.error_code && ` ${attempt.error_code}`}
         </span>
-        {status !== null && attempt.error_code && (
-          <span className="text-red-700">{attempt.error_code}</span>
-        )}
-        <span className="text-slate-500">{formatDate(attempt.started_at)}</span>
-        {attempt.duration_ms !== null && (
-          <span className="text-slate-500">{attempt.duration_ms} ms</span>
-        )}
+        <span className="text-sm text-ink-2">
+          {formatDate(attempt.started_at)}
+        </span>
+        <span className="ml-auto font-mono text-[13px] text-ink-3">
+          {attempt.duration_ms === null ? '' : `${attempt.duration_ms} ms`}
+        </span>
       </div>
       {attempt.response_snippet && (
-        <pre className="mt-2 overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-700">
+        <pre className={`${codeClass} mt-2 sm:ml-10`}>
           {attempt.response_snippet}
         </pre>
       )}
