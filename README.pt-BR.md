@@ -193,6 +193,22 @@ docker compose --profile app run --rm api node dist/scripts/retention.js
 
 O script de retenção apaga as linhas da outbox publicadas há mais de 7 dias (`RETENTION_OUTBOX_DAYS`) e os eventos com mais de 30 dias (`RETENTION_EVENT_DAYS`) cujas entregas já terminaram, junto com as entregas e as tentativas. Ele nunca apaga um evento com entrega em andamento e apaga em lotes de 1.000 linhas, cada um numa transação curta. Rode-o uma vez por dia; no Kubernetes, ele vira um CronJob.
 
+## Testes de carga
+
+```sh
+pnpm stack:up
+pnpm obs:up
+pnpm load:ingest
+pnpm load:e2e
+```
+
+Os cenários do k6 em `load-tests/` rodam num contêiner dentro da rede do compose e enviam os números ao Prometheus, então a linha "Carga (k6)" do painel mostra a carga ao lado da reação da stack. O `scripts/load.mjs` aumenta os limites de pedidos da API e de envio por endpoint (`pnpm stack:up` os restaura), cria um projeto com um endpoint na casa de teste, roda o k6 e relata:
+
+- **`load:ingest`** sobe a taxa de publicação até 800 eventos/s em 4 minutos (`MAX_RATE`, `RAMP`) e mostra, a cada 15 segundos, a taxa oferecida, a aceita e o p99 da API.
+- **`load:e2e`** mantém 200 eventos/s por 10 minutos (`RATE`, `DURATION`), espera todas as entregas terminarem e confere no banco que cada evento tem uma entrega concluída, com o atraso até a 1ª tentativa comparado ao SLO de 5 s.
+
+`OTEL_SDK_DISABLED=true` antes de qualquer um dos comandos desliga o tracing, para medir quanto ele custa. Os resultados estão em [docs/capacity.md](docs/capacity.md).
+
 ## Imagens publicadas
 
 Todo merge na `main` publica as três imagens para `linux/amd64` e `linux/arm64`, com as tags `sha-<commit>` e `main`, e uma tag `v*` acrescenta a versão:

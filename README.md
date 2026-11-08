@@ -193,6 +193,22 @@ docker compose --profile app run --rm api node dist/scripts/retention.js
 
 The retention script deletes outbox rows published over 7 days ago (`RETENTION_OUTBOX_DAYS`) and events over 30 days old (`RETENTION_EVENT_DAYS`) whose deliveries have all ended, with their deliveries and attempts. It never deletes an event with a delivery still in progress, and it deletes in batches of 1,000 rows, each its own short transaction. Run it daily; in Kubernetes it becomes a CronJob.
 
+## Load tests
+
+```sh
+pnpm stack:up
+pnpm obs:up
+pnpm load:ingest
+pnpm load:e2e
+```
+
+The k6 scenarios in `load-tests/` run in a container inside the compose network and push their numbers to Prometheus, so the dashboard's "Carga (k6)" row shows the load next to the stack's reaction. `scripts/load.mjs` raises the API and endpoint rate limits (`pnpm stack:up` restores them), creates a project with one endpoint on the test receiver, runs k6 and reports:
+
+- **`load:ingest`** ramps the publish rate up to 800 events/s over 4 minutes (`MAX_RATE`, `RAMP`) and prints, every 15 seconds, the rate offered, the rate accepted and the API's p99.
+- **`load:e2e`** holds 200 events/s for 10 minutes (`RATE`, `DURATION`), waits for every delivery to end and checks in the database that each event has a finished delivery, with the delay to the first attempt against the 5 s SLO.
+
+`OTEL_SDK_DISABLED=true` before either command turns tracing off, to measure what it costs. The results are in [docs/capacity.md](docs/capacity.md).
+
 ## Published images
 
 Every merge to `main` publishes the three images for `linux/amd64` and `linux/arm64`, tagged `sha-<commit>` and `main`, and a `v*` tag adds its version:

@@ -1127,6 +1127,151 @@
           "expr": "{service=~\"api|relay|deliver\", level=~\"warn|error|fatal\"}"
         }
       ]
+    },
+    {
+      "type": "row",
+      "id": 27,
+      "title": "Carga (k6)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 60
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 28,
+      "title": "Oferecido × aceito",
+      "description": "Pedidos/s que o k6 enviou e eventos/s que o balcão aceitou. Quando as linhas se separam, a API passou do limite. Vazio fora de um teste de carga (pnpm load:*).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 61
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(k6_http_reqs_total[$__rate_interval]))",
+          "legendFormat": "k6 enviou"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(k6_dropped_iterations_total[$__rate_interval]))",
+          "legendFormat": "k6 não conseguiu enviar"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(hookline_events_accepted_total[$__rate_interval]))",
+          "legendFormat": "balcão aceitou"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(hookline_delivery_attempts_total[$__rate_interval]))",
+          "legendFormat": "carteiro tentou"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 29,
+      "title": "Latência vista pelo k6",
+      "description": "Do envio à resposta do POST /v1/events, medida pelo cliente. Meta: p99 abaixo de 200 ms.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 61
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(k6_http_req_duration_p50)",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(k6_http_req_duration_p99)",
+          "legendFormat": "p99"
+        }
+      ]
     }
   ]
 }
