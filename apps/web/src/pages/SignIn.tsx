@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { createClient } from '../api/client';
 import { useSession } from '../auth';
-import { Button, ErrorMessage, inputClass } from '../components/ui';
+import { Mark } from '../components/Mark';
+import { Button, ErrorMessage, Field, monoInputClass } from '../components/ui';
 
 export function SignIn() {
   const { signIn, expired } = useSession();
@@ -26,22 +27,27 @@ export function SignIn() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <main className="flex min-h-screen items-center justify-center px-4 py-10">
       <form
         onSubmit={submit}
-        className="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+        className="w-full max-w-[400px] space-y-5 rounded-[10px] border border-rule bg-surface p-7"
       >
+        <span className="flex items-center gap-2.5 text-[17px] font-bold tracking-[-0.02em]">
+          <Mark />
+          Hookline
+        </span>
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">Hookline</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Sign in with your project’s API key.
+          <h1>Open your project</h1>
+          <p className="mt-2 text-ink-2">
+            Paste the API key that{' '}
+            <code className="font-mono text-[13px]">create-project</code>{' '}
+            printed.
           </p>
         </div>
         {expired && error === null && (
           <ErrorMessage error={new Error('The API rejected the key.')} />
         )}
-        <label className="block space-y-1">
-          <span className="text-sm font-medium text-slate-700">API key</span>
+        <Field label="API key">
           <input
             type="password"
             autoComplete="off"
@@ -49,22 +55,22 @@ export function SignIn() {
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
             placeholder="hk_…"
-            className={inputClass}
+            className={monoInputClass}
           />
-        </label>
-        <p className="text-xs text-slate-500">
-          The key stays in this tab’s memory only. Reloading the page forgets
-          it.
-        </p>
+        </Field>
         {error !== null && <ErrorMessage error={error} />}
         <Button
           type="submit"
           variant="primary"
           disabled={checking}
-          className="w-full"
+          className="w-full py-3"
         >
           {checking ? 'Checking…' : 'Sign in'}
         </Button>
+        <p className="text-[13px] text-ink-3">
+          The key stays in this tab’s memory only. Reloading the page forgets
+          it.
+        </p>
       </form>
     </main>
   );

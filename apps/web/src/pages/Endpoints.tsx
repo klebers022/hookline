@@ -8,13 +8,16 @@ import {
   Button,
   Empty,
   ErrorMessage,
-  inputClass,
+  Field,
+  formClass,
   Loading,
+  monoInputClass,
   PageHeader,
   StatusBadge,
   Table,
+  Url,
 } from '../components/ui';
-import { formatDate } from '../format';
+import { formatTime } from '../format';
 
 export function Endpoints() {
   const [creating, setCreating] = useState(false);
@@ -31,7 +34,10 @@ export function Endpoints() {
 
   return (
     <>
-      <PageHeader title="Endpoints">
+      <PageHeader
+        title="Endpoints"
+        description="Where Hookline sends your events, and how each one is doing."
+      >
         <Button variant="primary" onClick={() => setCreating(!creating)}>
           Add endpoint
         </Button>
@@ -45,9 +51,9 @@ export function Endpoints() {
       ) : list.error ? (
         <ErrorMessage error={list.error} />
       ) : list.rows.length === 0 ? (
-        <Empty>No endpoints yet.</Empty>
+        <Empty>No endpoints yet. Add one to start receiving events.</Empty>
       ) : (
-        <Table head={['URL', 'Event types', 'Status', 'Circuit', '']}>
+        <Table head={['URL', 'Event types', 'Status', 'Health', '']}>
           {list.rows.map((endpoint) => (
             <EndpointRow
               key={endpoint.id}
@@ -97,24 +103,57 @@ function EndpointRow({
 
   return (
     <tr>
-      <td className="px-4 py-2 break-all">{endpoint.url}</td>
-      <td className="px-4 py-2 text-slate-600">
-        {endpoint.event_types.join(', ')}
+      <td>
+        <Url url={endpoint.url} />
       </td>
-      <td className="px-4 py-2">
+      <td>
+        <div className="flex flex-wrap gap-1">
+          {endpoint.event_types.map((type) => (
+            <span
+              key={type}
+              className="rounded bg-rule-soft px-[7px] py-0.5 font-mono text-xs text-ink-2"
+            >
+              {type}
+            </span>
+          ))}
+        </div>
+      </td>
+      <td>
         <StatusBadge status={endpoint.status} />
       </td>
-      <td className="px-4 py-2 text-slate-600">
-        {circuitOpen
-          ? `open until ${formatDate(endpoint.circuit_open_until)}`
-          : `closed (${endpoint.consecutive_failures} failures)`}
+      <td className="text-[13px]">
+        {circuitOpen ? (
+          <>
+            <span className="font-medium text-bad">
+              Paused until {formatTime(endpoint.circuit_open_until)}
+            </span>
+            <span className="block text-xs text-ink-3">
+              {endpoint.consecutive_failures} failures in a row
+            </span>
+          </>
+        ) : endpoint.consecutive_failures > 0 ? (
+          <span className="text-wait">
+            {endpoint.consecutive_failures === 1
+              ? '1 failure in a row'
+              : `${endpoint.consecutive_failures} failures in a row`}
+          </span>
+        ) : (
+          <span className="text-ink-2">Healthy</span>
+        )}
       </td>
-      <td className="px-4 py-2">
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={toggle.isPending} onClick={() => toggle.mutate()}>
+      <td>
+        <div className="flex flex-wrap justify-end gap-1">
+          <Button
+            variant="quiet"
+            size="sm"
+            disabled={toggle.isPending}
+            onClick={() => toggle.mutate()}
+          >
             {endpoint.status === 'active' ? 'Disable' : 'Enable'}
           </Button>
           <Button
+            variant="quiet"
+            size="sm"
             disabled={rotate.isPending}
             onClick={() => {
               if (
@@ -130,6 +169,7 @@ function EndpointRow({
           </Button>
           <Button
             variant="danger"
+            size="sm"
             disabled={remove.isPending}
             onClick={() => {
               if (window.confirm(`Delete ${endpoint.url}?`)) {
@@ -179,37 +219,34 @@ function CreateForm({
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="mb-6 space-y-3 rounded-lg bg-white p-4 ring-1 ring-slate-200"
-    >
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-slate-700">URL</span>
+    <form onSubmit={submit} className={formClass}>
+      <h2>Add an endpoint</h2>
+      <Field label="URL">
         <input
           type="url"
           required
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           placeholder="https://example.com/webhooks"
-          className={inputClass}
+          className={monoInputClass}
         />
-      </label>
-      <label className="block space-y-1">
-        <span className="text-sm font-medium text-slate-700">
-          Event types (comma separated)
-        </span>
+      </Field>
+      <Field
+        label="Event types"
+        hint="Separate them with commas. The endpoint receives only these types."
+      >
         <input
           required
           value={types}
           onChange={(event) => setTypes(event.target.value)}
           placeholder="order.created, order.paid"
-          className={inputClass}
+          className={monoInputClass}
         />
-      </label>
+      </Field>
       {create.error && <ErrorMessage error={create.error} />}
       <div className="flex gap-2">
         <Button type="submit" variant="primary" disabled={create.isPending}>
-          Create
+          Add endpoint
         </Button>
         <Button onClick={onClose}>Cancel</Button>
       </div>
@@ -228,15 +265,19 @@ function SecretNotice({
 }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="mb-6 space-y-2 rounded-lg bg-amber-50 p-4 text-sm ring-1 ring-amber-300">
-      <p className="font-medium text-amber-900">
-        Signing secret for {url}. Copy it now: it is not shown again.
+    <div className="mb-6 space-y-3 rounded-[10px] border border-stamp/30 bg-stamp-wash p-4 text-sm">
+      <p>
+        <strong className="font-semibold">Copy the signing secret now.</strong>{' '}
+        It is shown only this once. <Url url={url} /> uses it to check that a
+        request came from Hookline.
       </p>
-      <code className="block rounded bg-white px-3 py-2 font-mono break-all ring-1 ring-amber-200">
-        {value}
-      </code>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
+        <code className="min-w-0 flex-1 rounded-md border border-rule bg-surface px-3 py-2 font-mono text-[13px] [overflow-wrap:anywhere]">
+          {value}
+        </code>
         <Button
+          variant="primary"
+          size="sm"
           onClick={async () => {
             await navigator.clipboard.writeText(value);
             setCopied(true);
@@ -244,7 +285,9 @@ function SecretNotice({
         >
           {copied ? 'Copied' : 'Copy'}
         </Button>
-        <Button onClick={onDismiss}>Done</Button>
+        <Button size="sm" onClick={onDismiss}>
+          Done
+        </Button>
       </div>
     </div>
   );

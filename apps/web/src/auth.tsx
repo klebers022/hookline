@@ -12,6 +12,9 @@ interface Session {
   client: ApiClient | null;
   // Set when the API rejected the key, so the sign-in screen can say why.
   expired: boolean;
+  // The key's public part, hk_<prefix>, which the API also stores in clear,
+  // so the header can say which key is in use without showing the secret.
+  keyPrefix: string | null;
   signIn(apiKey: string): void;
   signOut(): void;
 }
@@ -41,9 +44,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [apiKey],
   );
 
+  const keyPrefix = apiKey ? apiKey.split('_').slice(0, 2).join('_') : null;
   const session = useMemo(
-    () => ({ client, expired, signIn, signOut }),
-    [client, expired, signIn, signOut],
+    () => ({ client, expired, keyPrefix, signIn, signOut }),
+    [client, expired, keyPrefix, signIn, signOut],
   );
   return (
     <SessionContext.Provider value={session}>

@@ -5,12 +5,15 @@ import { isFinal, type EventDetail as Detail } from '../api/types';
 import { useApi } from '../auth';
 import { RetryButton } from '../components/RetryButton';
 import {
+  codeClass,
   Empty,
   ErrorMessage,
   Loading,
   PageHeader,
   StatusBadge,
   Table,
+  Time,
+  Url,
 } from '../components/ui';
 import { formatDate, formatJson } from '../format';
 
@@ -33,54 +36,73 @@ export function EventDetail() {
     return <ErrorMessage error={event.error} />;
   }
   const { data } = event;
+  const count = data.deliveries.length;
   return (
     <>
-      <PageHeader title={data.type} />
-      <dl className="mb-6 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
-        <dt className="text-slate-500">ID</dt>
-        <dd className="font-mono text-xs">{data.id}</dd>
-        <dt className="text-slate-500">Created</dt>
-        <dd>{formatDate(data.created_at)}</dd>
-      </dl>
+      <PageHeader
+        crumbs={
+          <>
+            <Link to="/events" className="text-ink-2 hover:underline">
+              Events
+            </Link>{' '}
+            /
+          </>
+        }
+        title={data.type}
+        description={
+          <>
+            <span>Published {formatDate(data.created_at)}</span>
+            <span className="font-mono text-[13px] text-ink-3">{data.id}</span>
+          </>
+        }
+      />
 
-      <h2 className="mb-2 text-sm font-semibold text-slate-700">Deliveries</h2>
-      {data.deliveries.length === 0 ? (
-        <Empty>No endpoint subscribes to this event type.</Empty>
-      ) : (
-        <Table head={['Endpoint', 'Status', 'Attempts', 'Next attempt', '']}>
-          {data.deliveries.map((delivery) => (
-            <tr key={delivery.id}>
-              <td className="px-4 py-2">
-                <Link
-                  to={`/deliveries/${delivery.id}`}
-                  className="break-all hover:underline"
-                >
-                  {delivery.endpoint_url}
-                </Link>
-              </td>
-              <td className="px-4 py-2">
-                <StatusBadge status={delivery.status} />
-              </td>
-              <td className="px-4 py-2">{delivery.attempt_count}</td>
-              <td className="px-4 py-2 text-slate-600">
-                {formatDate(delivery.next_attempt_at)}
-              </td>
-              <td className="px-4 py-2">
-                {delivery.status === 'dead' && (
-                  <RetryButton deliveryId={delivery.id} />
-                )}
-              </td>
-            </tr>
-          ))}
-        </Table>
-      )}
+      <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <section>
+          <h2 className="mb-3">
+            {count === 1 ? 'Sent to 1 endpoint' : `Sent to ${count} endpoints`}
+          </h2>
+          {count === 0 ? (
+            <Empty>No endpoint subscribes to this event type.</Empty>
+          ) : (
+            <Table
+              head={['Endpoint', 'Status', 'Attempts', 'Next attempt', '']}
+            >
+              {data.deliveries.map((delivery) => (
+                <tr key={delivery.id}>
+                  <td>
+                    <Link
+                      to={`/deliveries/${delivery.id}`}
+                      className="hover:underline"
+                    >
+                      <Url url={delivery.endpoint_url} />
+                    </Link>
+                  </td>
+                  <td>
+                    <StatusBadge status={delivery.status} />
+                  </td>
+                  <td className="font-mono text-[13px]">
+                    {delivery.attempt_count}
+                  </td>
+                  <td className="whitespace-nowrap text-ink-2">
+                    <Time value={delivery.next_attempt_at} />
+                  </td>
+                  <td>
+                    {delivery.status === 'dead' && (
+                      <RetryButton deliveryId={delivery.id} size="sm" />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </section>
 
-      <h2 className="mt-6 mb-2 text-sm font-semibold text-slate-700">
-        Payload
-      </h2>
-      <pre className="overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-slate-100">
-        {formatJson(data.payload)}
-      </pre>
+        <section>
+          <h2 className="mb-3">Payload</h2>
+          <pre className={codeClass}>{formatJson(data.payload)}</pre>
+        </section>
+      </div>
     </>
   );
 }

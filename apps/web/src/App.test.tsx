@@ -88,12 +88,12 @@ describe('dashboard', () => {
 
     const user = await signIn();
     expect(await screen.findByText('order.created')).toBeInTheDocument();
-    expect(screen.getByText(dead.endpoint_url)).toBeInTheDocument();
+    expect(screen.getByTitle(dead.endpoint_url)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Retry' }));
 
     // The list is fetched again and the delivery has left it.
-    expect(await screen.findByText('Nothing here.')).toBeInTheDocument();
+    expect(await screen.findByText(/No dead deliveries/)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       `/v1/deliveries/${dead.id}/retry`,
       expect.objectContaining({ method: 'POST' }),
