@@ -168,10 +168,12 @@ export const eventRoutes: FastifyPluginAsyncTypebox<{
       }
 
       const { rows: deliveries } = await pool.query(
-        `SELECT id, endpoint_id, status, attempt_count, next_attempt_at,
-                delivered_at, created_at
-         FROM deliveries WHERE event_id = $1
-         ORDER BY id`,
+        `SELECT d.id, d.endpoint_id, e.url AS endpoint_url, d.status,
+                d.attempt_count, d.next_attempt_at, d.delivered_at,
+                d.created_at
+         FROM deliveries d JOIN endpoints e ON e.id = d.endpoint_id
+         WHERE d.event_id = $1
+         ORDER BY d.id`,
         [request.params.id],
       );
       return { ...rows[0], deliveries };

@@ -47,6 +47,40 @@ describe('webhook delivery', () => {
     });
   });
 
+  // The dashboard lists deliveries without one more request per row.
+  it('names the event type and the endpoint URL of each delivery', async () => {
+    const { id: endpointId } = await h.createEndpoint(['listing.check']);
+    const event = await h.publish('listing.check');
+    const delivery = await h.waitForDelivery(event.id, 'succeeded');
+    const expected = {
+      id: delivery.id,
+      event_id: event.id,
+      event_type: 'listing.check',
+      endpoint_id: endpointId,
+      endpoint_url: expect.stringMatching(/^http/),
+    };
+
+    const { body: list } = await h.call(
+      'GET',
+      '/v1/deliveries?status=succeeded&limit=1',
+    );
+    expect(list.data[0]).toMatchObject(expected);
+
+    const { body: detail } = await h.call(
+      'GET',
+      `/v1/deliveries/${delivery.id}`,
+    );
+    expect(detail).toMatchObject(expected);
+
+    const { body: fromEvent } = await h.call('GET', `/v1/events/${event.id}`);
+    expect(fromEvent.deliveries).toEqual([
+      expect.objectContaining({
+        id: delivery.id,
+        endpoint_url: expected.endpoint_url,
+      }),
+    ]);
+  });
+
   it('marks the outbox row as published', async () => {
     await h.createEndpoint(['order.created']);
     const event = await h.publish('order.created');
