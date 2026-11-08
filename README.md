@@ -138,12 +138,13 @@ Create a project in the running stack with `docker compose --profile app run --r
 ```sh
 pnpm stack:up
 pnpm obs:up
+pnpm obs:reload
 pnpm obs:down
 ```
 
 Each process serves `/metrics` (Prometheus format), `/healthz` and `/readyz` on an ops port of its own, which is never the API's public port: `METRICS_PORT`, 9464 in containers, and 9464, 9465 and 9466 for the API, the relay and the delivery worker under `pnpm dev:*`. It listens on `127.0.0.1` unless `METRICS_HOST` says otherwise.
 
-`pnpm obs:up` starts Prometheus at <http://localhost:9090>, Tempo for traces, Loki and Alloy for logs, and Grafana at <http://localhost:3001>, which opens on the "Hookline – visão geral" dashboard. Prometheus scrapes the containers started by `pnpm stack:up` and RabbitMQ's queue metrics. The dashboard and data sources are provisioned from `infra/observability`, so edit the JSON there rather than in the UI.
+`pnpm obs:up` starts Prometheus at <http://localhost:9090>, Tempo for traces, Loki and Alloy for logs, and Grafana at <http://localhost:3001>, which opens on the "Hookline – visão geral" dashboard. Prometheus scrapes the containers started by `pnpm stack:up` and RabbitMQ's queue metrics. The dashboard and data sources are provisioned from `infra/observability`, so edit the JSON there rather than in the UI. After changing the dashboard or the alert rules, run `pnpm obs:reload`: Prometheus never rereads its rules on its own, and on Docker Desktop for Windows Grafana does not notice a file changed on the Windows side.
 
 | Metric                                                                           | What it shows                                                            |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |

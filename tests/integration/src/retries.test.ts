@@ -9,6 +9,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { pino } from 'pino';
 import { startHarness, type Harness } from './harness.js';
 
 describe('delivery retries', () => {
@@ -101,6 +102,36 @@ describe('delivery retries', () => {
     await vi.waitFor(async () => expect(await dlqDepth()).toBe(before + 1), {
       timeout: 5_000,
     });
+  });
+
+  // A retried failure is routine and stays at info; the attempt that gives
+  // up is a warning, so it shows among the dashboard's warnings and errors.
+  it('logs each outcome, and the attempt that gives up as a warning', async () => {
+    const lines: { level: number; outcome?: string; attempt?: number }[] = [];
+    const logger = pino(
+      { level: 'info' },
+      { write: (line: string) => lines.push(JSON.parse(line)) },
+    );
+    await h.processes.worker.stop();
+    h.processes.worker = h.newWorker({ logger });
+
+    const { delivery } = await exhaust('retry.logged');
+
+    const attempts = lines
+      .filter((line) => 'outcome' in line)
+      .filter(
+        (line) => (line as { deliveryId?: string }).deliveryId === delivery.id,
+      );
+    expect(
+      attempts.map(({ attempt, outcome, level }) => [attempt, outcome, level]),
+    ).toEqual([
+      [1, 'retry', 30],
+      [2, 'retry', 30],
+      [3, 'retry', 30],
+      [4, 'retry', 30],
+      [5, 'retry', 30],
+      [6, 'dead', 40],
+    ]);
   });
 
   it('ignores a duplicate of an attempt that already succeeded', async () => {

@@ -138,12 +138,13 @@ Crie um projeto na stack em execução com `docker compose --profile app run --r
 ```sh
 pnpm stack:up
 pnpm obs:up
+pnpm obs:reload
 pnpm obs:down
 ```
 
 Cada processo serve `/metrics` (formato do Prometheus), `/healthz` e `/readyz` numa porta de operação própria, que nunca é a porta pública da API: `METRICS_PORT`, 9464 nos contêineres, e 9464, 9465 e 9466 para a API, o relay e o worker de entrega com `pnpm dev:*`. Ela escuta em `127.0.0.1`, a menos que `METRICS_HOST` diga outro endereço.
 
-`pnpm obs:up` sobe o Prometheus em <http://localhost:9090>, o Tempo para os traces, o Loki e o Alloy para os logs e o Grafana em <http://localhost:3001>, que abre no painel "Hookline – visão geral". O Prometheus coleta os contêineres de `pnpm stack:up` e as métricas das filas do RabbitMQ. O painel e as fontes de dados são provisionados a partir de `infra/observability`; para mudar o painel, edite o JSON ali, não na interface.
+`pnpm obs:up` sobe o Prometheus em <http://localhost:9090>, o Tempo para os traces, o Loki e o Alloy para os logs e o Grafana em <http://localhost:3001>, que abre no painel "Hookline – visão geral". O Prometheus coleta os contêineres de `pnpm stack:up` e as métricas das filas do RabbitMQ. O painel e as fontes de dados são provisionados a partir de `infra/observability`; para mudar o painel, edite o JSON ali, não na interface. Depois de mudar o painel ou as regras de alerta, rode `pnpm obs:reload`: o Prometheus nunca relê as regras sozinho, e no Docker Desktop para Windows o Grafana não percebe um arquivo alterado do lado do Windows.
 
 | Métrica                                                                          | O que mostra                                                                  |
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |

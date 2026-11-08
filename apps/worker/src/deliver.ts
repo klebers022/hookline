@@ -349,8 +349,10 @@ export function startDeliveryWorker({
       { dispatcher, targetPolicy },
     );
     const next = await recordAttempt(delivery, attempt, result);
+    // Without a next step, a copy of this message running at the same time
+    // recorded the attempt first.
+    const outcome = next ? ATTEMPT_OUTCOME[next.action] : 'duplicate';
     if (next) {
-      const outcome = ATTEMPT_OUTCOME[next.action];
       setSpanAttributes({
         'hookline.outcome': outcome,
         ...(result.responseStatus !== null && {
@@ -364,10 +366,16 @@ export function startDeliveryWorker({
         metrics.attemptErrors.inc({ code: result.errorCode });
       }
     }
-    logger.info(
+    // A failed attempt that will be retried is routine: endpoints go down,
+    // and the retries are there for it. A delivery given up on, or an
+    // endpoint disabled by a 410, needs someone to look, so it is a warning.
+    const level =
+      outcome === 'dead' || outcome === 'endpoint_disabled' ? 'warn' : 'info';
+    logger[level](
       {
         deliveryId: id,
         attempt,
+        outcome,
         status: result.responseStatus,
         errorCode: result.errorCode,
         durationMs: result.durationMs,

@@ -24,6 +24,7 @@
     "stack:smoke": "node scripts/smoke.mjs",
     "obs:up": "docker compose --profile observability up -d --wait prometheus tempo loki alloy grafana",
     "obs:down": "docker compose --profile observability rm --stop --force prometheus tempo loki alloy grafana",
+    "obs:reload": "docker compose --profile observability restart prometheus grafana",
     "obs:test-rules": "docker run --rm -v ./infra/observability/prometheus:/rules -w /rules --entrypoint promtool prom/prometheus:v3.16.0 test rules alerts.test.yml",
     "load:ingest": "node scripts/load.mjs ingest",
     "load:e2e": "node scripts/load.mjs end-to-end",
