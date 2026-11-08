@@ -10,3 +10,10 @@ datasources:
         datasourceUid: prometheus
       nodeGraph:
         enabled: true
+      # From a span, the log lines its trace wrote.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -1m
+        spanEndTimeShift: 1m
+        customQuery: true
+        query: '{service=~".+"} | trace_id="$${__trace.traceId}"'

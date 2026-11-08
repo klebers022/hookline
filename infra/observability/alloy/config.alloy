@@ -1,0 +1,68 @@
+// Reads the logs of the Hookline containers from Docker and sends them to
+// Loki. The processes only write JSON lines to stdout, as before.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Keeps only this compose project's app services, labelled by service.
+discovery.relabel "hookline" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "hookline"
+    action        = "keep"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "api|relay|deliver|migrate|test-receiver"
+    action        = "keep"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "hookline" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.hookline.output
+  forward_to = [loki.process.pino.receiver]
+}
+
+loki.process "pino" {
+  // Pino writes JSON; lines that are not JSON pass through unchanged.
+  stage.json {
+    expressions = {
+      level    = "level",
+      trace_id = "trace_id",
+      span_id  = "span_id",
+    }
+  }
+
+  // Pino numbers its levels; Grafana colours lines by name. A line with no
+  // level gets no label.
+  stage.template {
+    source   = "level"
+    template = "{{ if eq .Value \"10\" }}trace{{ else if eq .Value \"20\" }}debug{{ else if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else if .Value }}{{ .Value }}{{ end }}"
+  }
+
+  // A handful of values: safe as a label.
+  stage.labels {
+    values = { level = "" }
+  }
+
+  // One value per trace: kept beside the line, not in the index.
+  stage.structured_metadata {
+    values = { trace_id = "", span_id = "" }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

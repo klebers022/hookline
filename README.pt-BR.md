@@ -143,7 +143,7 @@ pnpm obs:down
 
 Cada processo serve `/metrics` (formato do Prometheus), `/healthz` e `/readyz` numa porta de operação própria, que nunca é a porta pública da API: `METRICS_PORT`, 9464 nos contêineres, e 9464, 9465 e 9466 para a API, o relay e o worker de entrega com `pnpm dev:*`. Ela escuta em `127.0.0.1`, a menos que `METRICS_HOST` diga outro endereço.
 
-`pnpm obs:up` sobe o Prometheus em <http://localhost:9090>, o Tempo para os traces e o Grafana em <http://localhost:3001>, que abre no painel "Hookline – visão geral". O Prometheus coleta os contêineres de `pnpm stack:up` e as métricas das filas do RabbitMQ. O painel e as fontes de dados são provisionados a partir de `infra/observability`; para mudar o painel, edite o JSON ali, não na interface.
+`pnpm obs:up` sobe o Prometheus em <http://localhost:9090>, o Tempo para os traces, o Loki e o Alloy para os logs e o Grafana em <http://localhost:3001>, que abre no painel "Hookline – visão geral". O Prometheus coleta os contêineres de `pnpm stack:up` e as métricas das filas do RabbitMQ. O painel e as fontes de dados são provisionados a partir de `infra/observability`; para mudar o painel, edite o JSON ali, não na interface.
 
 | Métrica                                                                          | O que mostra                                                                  |
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -165,6 +165,33 @@ A API, o relay e o worker de entrega enviam traces do OpenTelemetry por OTLP qua
 O trace atravessa a outbox e a fila à mão: cada linha da outbox guarda o contexto W3C de quem a escreveu (`outbox.trace_context`), o relay publica como filho dele e envia o próprio contexto nos headers da mensagem, e o worker de entrega continua dali. Assim, um único trace mostra o `POST /v1/events`, as gravações no banco, a publicação, a tentativa de entrega e a resposta do endpoint. Uma nova tentativa, que pode vir horas depois, abre um trace novo com um link para o da tentativa anterior. No Grafana, abra o Explore, escolha o Tempo e busque, por exemplo, `{ name = "POST /v1/events" }`.
 
 As requisições de webhook levam o header `traceparent`, então um endpoint que também usa tracing pode entrar no mesmo trace.
+
+### Logs
+
+Os processos só escrevem linhas JSON no stdout. O Alloy lê os logs dos contêineres pelo socket do Docker e os envia ao Loki, com os rótulos `service` e `level`. `trace_id` e `span_id` vão como metadados estruturados, não como rótulos, porque um stream por trace sobrecarregaria o índice do Loki. No Grafana, os detalhes de uma linha de log levam ao trace dela no Tempo, e um span no Tempo leva de volta às linhas que o trace escreveu. A última linha do painel mostra os avisos e erros.
+
+### Alertas
+
+As regras de alerta ficam em `infra/observability/prometheus/alerts.yml`, e `pnpm obs:test-rules` roda os testes delas com o promtool, como o CI faz:
+
+| Alerta                     | Dispara quando                                                            |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `HooklineOutboxStuck`      | A linha pendente mais antiga da outbox passa de 60 s por 2 minutos        |
+| `HooklineDeadLetters`      | Uma entrega chegou à DLQ nos últimos 10 minutos                           |
+| `HooklineFirstAttemptSlow` | O p99 do atraso até a 1ª tentativa passa de 5 s por 5 minutos (SLO)       |
+| `HooklineHighFailureRate`  | Mais da metade das tentativas falhou nos últimos 5 minutos, por 2 minutos |
+| `HooklineProcessDown`      | O Prometheus não consegue coletar um processo por um minuto               |
+
+Ainda não há envio de avisos: os alertas disparados aparecem na página Alerts do Prometheus e no painel.
+
+## Retenção
+
+```sh
+pnpm db:retention
+docker compose --profile app run --rm api node dist/scripts/retention.js
+```
+
+O script de retenção apaga as linhas da outbox publicadas há mais de 7 dias (`RETENTION_OUTBOX_DAYS`) e os eventos com mais de 30 dias (`RETENTION_EVENT_DAYS`) cujas entregas já terminaram, junto com as entregas e as tentativas. Ele nunca apaga um evento com entrega em andamento e apaga em lotes de 1.000 linhas, cada um numa transação curta. Rode-o uma vez por dia; no Kubernetes, ele vira um CronJob.
 
 ## Imagens publicadas
 

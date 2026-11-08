@@ -1049,6 +1049,84 @@
           "legendFormat": "{{service}}"
         }
       ]
+    },
+    {
+      "type": "row",
+      "id": 24,
+      "title": "Alertas e logs",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 49
+      },
+      "panels": []
+    },
+    {
+      "type": "alertlist",
+      "id": 25,
+      "title": "Alertas",
+      "description": "Regras de infra/observability/prometheus/alerts.yml disparando (firing) ou aguardando o prazo (pending).",
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 0,
+        "y": 50
+      },
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 1,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "",
+        "datasource": "Prometheus",
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": false,
+          "normal": false,
+          "error": true
+        },
+        "showInstances": true
+      }
+    },
+    {
+      "type": "logs",
+      "id": 26,
+      "title": "Logs de aviso e erro",
+      "description": "Linhas warn, error e fatal dos processos, coletadas pelo Alloy. Abra uma linha para ir ao trace dela.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 16,
+        "x": 8,
+        "y": 50
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service=~\"api|relay|deliver\", level=~\"warn|error|fatal\"}"
+        }
+      ]
     }
   ]
 }

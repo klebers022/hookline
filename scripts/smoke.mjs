@@ -181,4 +181,19 @@ step(
 
 compose('start', 'deliver');
 step('Restarted the delivery worker');
+
+// Nothing here is old enough to delete; this checks the script runs.
+const retention = compose(
+  'run',
+  '--rm',
+  '--no-deps',
+  '-T',
+  'api',
+  'node',
+  'dist/scripts/retention.js',
+);
+if (!/Deleted \d+ finished events/.test(retention)) {
+  throw new Error(`Unexpected retention output:\n${retention}`);
+}
+step(`Ran the retention script: ${retention.trim()}`);
 console.log('Smoke test passed');

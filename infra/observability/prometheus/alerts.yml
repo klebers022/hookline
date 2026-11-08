@@ -1,0 +1,75 @@
+# Alert rules, evaluated by Prometheus. Until there is someone to notify
+# (Alertmanager arrives with production, in phase 7), firing alerts show on
+# Prometheus's Alerts page and in Grafana.
+#
+# Tested by alerts.test.yml: pnpm obs:test-rules.
+groups:
+  - name: hookline
+    rules:
+      # The relay publishes pending outbox rows every few hundred
+      # milliseconds. A row waiting a minute means it stopped or cannot
+      # reach RabbitMQ, and no new delivery leaves.
+      - alert: HooklineOutboxStuck
+        expr: max(hookline_outbox_oldest_pending_age_seconds) > 60
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The outbox has not been published for over a minute
+          description: >-
+            The oldest pending outbox row is {{ $value | humanizeDuration }}
+            old. Check that the relay is running and can reach RabbitMQ.
+
+      # A delivery reaches the DLQ only after its last attempt failed, or
+      # its endpoint answered 410. Each one is worth a look.
+      - alert: HooklineDeadLetters
+        expr: sum(increase(hookline_outbox_published_total{kind="dead"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Deliveries went to the dead letter queue
+          description: >-
+            {{ $value | humanize }} deliveries reached the DLQ in the last 10
+            minutes. GET /v1/deliveries?status=dead lists them.
+
+      # The delivery SLO: 99% of first attempts start within 5 seconds of
+      # the event being accepted.
+      - alert: HooklineFirstAttemptSlow
+        expr: >-
+          histogram_quantile(0.99,
+            sum by (le) (rate(hookline_delivery_first_attempt_delay_seconds_bucket[5m]))
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: First attempts start later than the 5 s SLO
+          description: >-
+            The p99 delay from accepted event to first attempt is
+            {{ $value | humanizeDuration }}. Look for a backlog on
+            deliveries.ready or a stuck outbox.
+
+      # Endpoints fail all the time and retries handle it. Most attempts
+      # failing at once points at the network or at Hookline itself.
+      - alert: HooklineHighFailureRate
+        expr: >-
+          sum(rate(hookline_delivery_attempts_total{outcome!="succeeded"}[5m]))
+            / sum(rate(hookline_delivery_attempts_total[5m])) > 0.5
+          and sum(rate(hookline_delivery_attempts_total[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Most delivery attempts are failing
+          description: >-
+            {{ $value | humanizePercentage }} of the attempts in the last 5
+            minutes failed.
+
+      - alert: HooklineProcessDown
+        expr: up{job="hookline"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ $labels.instance }} is down'
+          description: Prometheus has not been able to scrape {{ $labels.instance }} for a minute.
