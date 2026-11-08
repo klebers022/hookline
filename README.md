@@ -174,13 +174,13 @@ The processes write JSON lines to stdout and nothing else. Alloy reads the conta
 
 `infra/observability/prometheus/alerts.yml` holds the alert rules, and `pnpm obs:test-rules` runs their unit tests with promtool, as CI does:
 
-| Alert                      | Fires when                                                         |
-| -------------------------- | ------------------------------------------------------------------ |
-| `HooklineOutboxStuck`      | The oldest pending outbox row is over 60 s old for 2 minutes       |
-| `HooklineDeadLetters`      | A delivery reached the DLQ in the last 10 minutes                  |
-| `HooklineFirstAttemptSlow` | The p99 delay to the first attempt is over 5 s for 5 minutes (SLO) |
-| `HooklineHighFailureRate`  | Over half the attempts failed in the last 5 minutes, for 2 minutes |
-| `HooklineProcessDown`      | Prometheus cannot scrape a process for a minute                    |
+| Alert                      | Fires when                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `HooklineOutboxStuck`      | The oldest pending outbox row is over 60 s old for 2 minutes                                              |
+| `HooklineDeadLetters`      | A delivery reached the DLQ in the last 10 minutes                                                         |
+| `HooklineFirstAttemptSlow` | The p99 delay to the first attempt is over 5 s for 5 minutes (SLO)                                        |
+| `HooklineHighFailureRate`  | Over half the deliveries failed or waited on an open circuit breaker in the last 5 minutes, for 2 minutes |
+| `HooklineProcessDown`      | Prometheus cannot scrape a process for a minute                                                           |
 
 Nothing sends notifications yet: firing alerts show on Prometheus's Alerts page and in the dashboard.
 
