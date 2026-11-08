@@ -50,6 +50,12 @@ pnpm dev:deliver
 pnpm dev:receiver
 ```
 
+```bash
+pnpm dev:web
+```
+
+O painel fica em <http://localhost:5173>: entre com a API key do `pnpm project:create` para ver os eventos e cada tentativa de entrega, reenviar entregas com falha e gerenciar os endpoints. Ele chama a API no próprio endereço, e o Vite repassa `/v1` para a API. A chave fica só na memória da aba, então recarregar a página pede a chave de novo.
+
 A documentação da API fica em <http://localhost:3000/docs>. Para enviar um webhook de teste, cadastre o receptor como endpoint e publique um evento, substituindo `<API_KEY>`:
 
 ```bash

@@ -1,5 +1,7 @@
 import js from '@eslint/js';
 import eslintConfigPrettier from 'eslint-config-prettier';
+import reactHooks from 'eslint-plugin-react-hooks';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
@@ -18,6 +20,12 @@ export default tseslint.config(
         URL: 'readonly',
       },
     },
+  },
+  {
+    // The dashboard runs in the browser.
+    files: ['apps/web/**/*.{ts,tsx}'],
+    ...reactHooks.configs.flat.recommended,
+    languageOptions: { globals: globals.browser },
   },
   {
     // k6 scripts, which run in k6's own JavaScript runtime.
