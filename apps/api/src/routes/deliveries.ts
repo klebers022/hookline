@@ -18,8 +18,11 @@ const DeliveryStatus = Type.Union([
   Type.Literal('dead'),
 ]);
 
-const DELIVERY_COLUMNS = `d.id, d.event_id, d.endpoint_id, d.status,
-  d.attempt_count, d.next_attempt_at, d.delivered_at, d.created_at`;
+// The event type and the endpoint URL let the dashboard show a list of
+// deliveries without one more request per row.
+const DELIVERY_COLUMNS = `d.id, d.event_id, ev.type AS event_type, d.endpoint_id,
+  e.url AS endpoint_url, d.status, d.attempt_count, d.next_attempt_at,
+  d.delivered_at, d.created_at`;
 
 export const deliveryRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (
   app,
@@ -41,6 +44,7 @@ export const deliveryRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (
       const { rows } = await pool.query(
         `SELECT ${DELIVERY_COLUMNS} FROM deliveries d
          JOIN endpoints e ON e.id = d.endpoint_id
+         JOIN events ev ON ev.id = d.event_id
          WHERE e.project_id = $1
            AND ($2::uuid IS NULL OR d.id < $2)
            AND ($3::text IS NULL OR d.status = $3)
@@ -64,6 +68,7 @@ export const deliveryRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (
       const { rows } = await pool.query(
         `SELECT ${DELIVERY_COLUMNS} FROM deliveries d
          JOIN endpoints e ON e.id = d.endpoint_id
+         JOIN events ev ON ev.id = d.event_id
          WHERE d.id = $1 AND e.project_id = $2`,
         [request.params.id, request.projectId],
       );
