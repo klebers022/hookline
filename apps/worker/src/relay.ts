@@ -2,8 +2,8 @@ import {
   Counter,
   declareTopology,
   DELIVERIES_EXCHANGE,
-  Gauge,
   Registry,
+  registerDatabaseGauges,
   withPublishSpan,
   withTransaction,
   type TraceCarrier,
@@ -39,48 +39,9 @@ function routingKind(routingKey: string): string {
   return routingKey.split('.')[1] ?? 'unknown';
 }
 
-// These read the database's state on each scrape, so every relay replica
-// reports the same values and dashboards take their max(). A failed read
-// keeps the last value instead of failing the whole scrape.
 function createOutboxMetrics(registry: Registry, pool: Pool, logger: Logger) {
   const registers = [registry];
-
-  function gauge(name: string, help: string, sql: string): Gauge {
-    return new Gauge({
-      name,
-      help,
-      registers,
-      async collect() {
-        try {
-          const { rows } = await pool.query<{ value: number }>(sql);
-          this.set(rows[0]?.value ?? 0);
-        } catch (error) {
-          logger.warn({ err: error, metric: name }, 'Failed to read metric');
-        }
-      },
-    });
-  }
-
-  gauge(
-    'hookline_outbox_pending',
-    'Outbox rows waiting to be published.',
-    'SELECT count(*)::int AS value FROM outbox WHERE published_at IS NULL',
-  );
-  // Grows only when publishing stops, so it is the outbox's health signal.
-  gauge(
-    'hookline_outbox_oldest_pending_age_seconds',
-    'Age of the oldest outbox row waiting to be published.',
-    `SELECT coalesce(extract(epoch FROM now() - min(created_at)), 0)::float8
-       AS value
-     FROM (SELECT created_at FROM outbox WHERE published_at IS NULL
-           ORDER BY id LIMIT 1) oldest`,
-  );
-  gauge(
-    'hookline_endpoints_circuit_open',
-    'Endpoints whose circuit breaker is open.',
-    `SELECT count(*)::int AS value FROM endpoints
-     WHERE circuit_open_until > now()`,
-  );
+  registerDatabaseGauges(registry, pool, logger);
 
   return {
     published: new Counter({

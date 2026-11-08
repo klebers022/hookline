@@ -93,6 +93,29 @@ describe('metrics', () => {
     });
   });
 
+  // The guided test of phase 4 stopped the relay and the outbox alert never
+  // fired: only the relay reported the outbox, so its gauges vanished with
+  // it. The API reports them too.
+  it('reports a stuck outbox from the API while the relay is stopped', async () => {
+    const { api } = h.registries;
+    await h.processes.relay.stop();
+    try {
+      await h.createEndpoint(['metrics.stuck']);
+      await h.publish('metrics.stuck');
+      await vi.waitFor(async () => {
+        expect(
+          await value(api, 'hookline_outbox_oldest_pending_age_seconds'),
+        ).toBeGreaterThan(0.5);
+      });
+      expect(await value(api, 'hookline_outbox_pending')).toBe(1);
+    } finally {
+      h.processes.relay = h.newRelay();
+    }
+    await vi.waitFor(async () => {
+      expect(await value(api, 'hookline_outbox_pending')).toBe(0);
+    });
+  });
+
   it('does not count a replayed event again', async () => {
     const before = await value(
       h.registries.api,
