@@ -5,9 +5,11 @@ import {
   isFinal,
   type Attempt,
   type DeliveryDetail as Detail,
+  type Endpoint,
 } from '../api/types';
 import { useApi } from '../auth';
 import { RetryButton } from '../components/RetryButton';
+import { Route } from '../components/Route';
 import {
   codeClass,
   Empty,
@@ -15,10 +17,10 @@ import {
   Loading,
   PageHeader,
   StatusBadge,
-  Time,
   Url,
 } from '../components/ui';
 import { formatDate } from '../format';
+import { heldUntil, routeStops, routeSummary } from '../route';
 
 export function DeliveryDetail() {
   const { id } = useParams();
@@ -29,6 +31,16 @@ export function DeliveryDetail() {
     refetchInterval: (query) =>
       query.state.data && isFinal(query.state.data.status) ? false : REFRESH_MS,
   });
+  // While the delivery is still going, its endpoint's circuit breaker says
+  // whether the next try is being held, and until when.
+  const going = delivery.data !== undefined && !isFinal(delivery.data.status);
+  const endpoint = useQuery({
+    queryKey: ['endpoint', delivery.data?.endpoint_id],
+    queryFn: () =>
+      api.get<Endpoint>(`/v1/endpoints/${delivery.data?.endpoint_id}`),
+    enabled: going,
+    refetchInterval: going ? REFRESH_MS : false,
+  });
 
   if (delivery.isPending) {
     return <Loading />;
@@ -38,6 +50,7 @@ export function DeliveryDetail() {
   }
   const { data } = delivery;
   const { attempts } = data;
+  const held = going ? heldUntil(endpoint.data?.circuit_open_until) : null;
   return (
     <>
       <PageHeader
@@ -76,6 +89,11 @@ export function DeliveryDetail() {
         {data.status === 'dead' && <RetryButton deliveryId={data.id} />}
       </PageHeader>
 
+      <Route
+        summary={routeSummary(data, held)}
+        stops={routeStops(data, held)}
+      />
+
       <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <section>
           <h2 className="mb-3">What the endpoint answered</h2>
@@ -98,10 +116,6 @@ export function DeliveryDetail() {
               <Link to={`/events/${data.event_id}`} className="hover:underline">
                 {data.event_type}
               </Link>
-            </dd>
-            <dt className="text-ink-3">Next attempt</dt>
-            <dd>
-              <Time value={data.next_attempt_at} />
             </dd>
             <dt className="text-ink-3">Delivered</dt>
             <dd>{formatDate(data.delivered_at)}</dd>

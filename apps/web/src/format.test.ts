@@ -5,9 +5,9 @@ const NOW = Date.parse('2026-11-08T19:00:00Z');
 const at = (ms: number) => new Date(NOW + ms).toISOString();
 
 describe('formatRelative', () => {
-  it('says now under a minute either way', () => {
-    expect(formatRelative(at(-59_000), NOW)).toBe('now');
-    expect(formatRelative(at(30_000), NOW)).toBe('now');
+  it('rounds under a minute either way', () => {
+    expect(formatRelative(at(-59_000), NOW)).toBe('just now');
+    expect(formatRelative(at(30_000), NOW)).toBe('in under a minute');
   });
 
   it('uses the largest whole unit, in the past and the future', () => {

@@ -94,3 +94,11 @@
     @apply rounded-sm outline-2 outline-offset-2 outline-stamp;
   }
 }
+
+/* The node of a try still to come beats slowly; reduced motion stops it. */
+@keyframes beat {
+  50% {
+    transform: scale(0.55);
+    opacity: 0.5;
+  }
+}

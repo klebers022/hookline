@@ -20,13 +20,13 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 ];
 
 // "2 minutes ago", "in 28 minutes": how far a moment is from now, in the
-// largest whole unit. Under a minute is "now", and past a week it stops
-// being useful, so the date is shown instead.
+// largest whole unit. Under a minute is "just now" or "in under a minute",
+// and past a week it stops being useful, so the date is shown instead.
 export function formatRelative(value: string, now = Date.now()): string {
   const diff = new Date(value).getTime() - now;
   const size = Math.abs(diff);
   if (size < 60_000) {
-    return 'now';
+    return diff > 0 ? 'in under a minute' : 'just now';
   }
   if (size >= 7 * 86_400_000) {
     return dateTime.format(new Date(value));
