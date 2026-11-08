@@ -76,8 +76,43 @@ tests:
           - exp_labels:
               severity: warning
             exp_annotations:
-              summary: Most delivery attempts are failing
-              description: 85.71% of the attempts in the last 5 minutes failed.
+              summary: Most deliveries are failing
+              description: 85.71% of the deliveries in the last 5 minutes failed or waited on an open circuit breaker.
+
+  # What the guided test of phase 4 caught: after five failures the circuit
+  # breaker opens and attempts all but stop, while every message is put
+  # back. Counting attempts alone, the alert stayed quiet.
+  - name: an open circuit breaker counts as failing
+    interval: 1m
+    input_series:
+      - series: hookline_delivery_attempts_total{outcome="retry"}
+        values: 5 5 5 5 5 5 5 5 5 5 5
+      - series: hookline_delivery_attempts_total{outcome="succeeded"}
+        values: 0x10
+      - series: hookline_delivery_deferrals_total{reason="circuit_open"}
+        values: 0+180x10
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HooklineHighFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Most deliveries are failing
+              description: 100% of the deliveries in the last 5 minutes failed or waited on an open circuit breaker.
+
+  # Waiting on the per-endpoint rate limit is throttling, not failure.
+  - name: rate-limited messages do not count as failing
+    interval: 1m
+    input_series:
+      - series: hookline_delivery_attempts_total{outcome="succeeded"}
+        values: 0+60x10
+      - series: hookline_delivery_deferrals_total{reason="rate_limited"}
+        values: 0+600x10
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HooklineHighFailureRate
+        exp_alerts: []
 
   - name: a healthy failure rate stays quiet
     interval: 1m

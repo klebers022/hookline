@@ -49,21 +49,35 @@ groups:
             {{ $value | humanizeDuration }}. Look for a backlog on
             deliveries.ready or a stuck outbox.
 
-      # Endpoints fail all the time and retries handle it. Most attempts
+      # Endpoints fail all the time and retries handle it. Most deliveries
       # failing at once points at the network or at Hookline itself.
+      #
+      # A message put back because its endpoint's circuit breaker is open
+      # counts as a failure: once the breakers open, attempts almost stop,
+      # and counting attempts alone would go quiet exactly when every
+      # endpoint is unreachable.
       - alert: HooklineHighFailureRate
         expr: >-
-          sum(rate(hookline_delivery_attempts_total{outcome!="succeeded"}[5m]))
-            / sum(rate(hookline_delivery_attempts_total[5m])) > 0.5
-          and sum(rate(hookline_delivery_attempts_total[5m])) > 0.1
+          (
+            sum(rate(hookline_delivery_attempts_total{outcome!="succeeded"}[5m]))
+            + (sum(rate(hookline_delivery_deferrals_total{reason="circuit_open"}[5m])) or vector(0))
+          )
+          / (
+            sum(rate(hookline_delivery_attempts_total[5m]))
+            + (sum(rate(hookline_delivery_deferrals_total{reason="circuit_open"}[5m])) or vector(0))
+          ) > 0.5
+          and (
+            sum(rate(hookline_delivery_attempts_total[5m]))
+            + (sum(rate(hookline_delivery_deferrals_total{reason="circuit_open"}[5m])) or vector(0))
+          ) > 0.1
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: Most delivery attempts are failing
+          summary: Most deliveries are failing
           description: >-
-            {{ $value | humanizePercentage }} of the attempts in the last 5
-            minutes failed.
+            {{ $value | humanizePercentage }} of the deliveries in the last 5
+            minutes failed or waited on an open circuit breaker.
 
       - alert: HooklineProcessDown
         expr: up{job="hookline"} == 0
