@@ -133,6 +133,31 @@ São três imagens, todas rodando com o usuário sem privilégios `node` e com o
 
 Crie um projeto na stack em execução com `docker compose --profile app run --rm api node dist/scripts/create-project.js <nome>`.
 
+## Observabilidade
+
+```sh
+pnpm stack:up
+pnpm obs:up
+pnpm obs:down
+```
+
+Cada processo serve `/metrics` (formato do Prometheus), `/healthz` e `/readyz` numa porta de operação própria, que nunca é a porta pública da API: `METRICS_PORT`, 9464 nos contêineres, e 9464, 9465 e 9466 para a API, o relay e o worker de entrega com `pnpm dev:*`. Ela escuta em `127.0.0.1`, a menos que `METRICS_HOST` diga outro endereço.
+
+`pnpm obs:up` sobe o Prometheus em <http://localhost:9090> e o Grafana em <http://localhost:3001>, que abre no painel "Hookline – visão geral". O Prometheus coleta os contêineres de `pnpm stack:up` e as métricas das filas do RabbitMQ. O painel e as fontes de dados são provisionados a partir de `infra/observability`; para mudar o painel, edite o JSON ali, não na interface.
+
+| Métrica                                                                          | O que mostra                                                                  |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `hookline_http_request_duration_seconds`                                         | Latência da API por método, rota e classe de status                           |
+| `hookline_events_accepted_total`, `hookline_deliveries_created_total`            | Eventos novos e as entregas geradas pelo fan-out                              |
+| `hookline_outbox_pending`, `hookline_outbox_oldest_pending_age_seconds`          | Linhas esperando o relay; idade crescendo significa que ele parou             |
+| `hookline_outbox_published_total`                                                | Mensagens publicadas por tipo: `ready`, `wait` ou `dead`                      |
+| `hookline_delivery_attempts_total`, `hookline_delivery_attempt_duration_seconds` | Tentativas por resultado: `succeeded`, `retry`, `dead` ou `endpoint_disabled` |
+| `hookline_delivery_first_attempt_delay_seconds`                                  | Tempo entre aceitar o evento e a 1ª tentativa, o SLO de entrega               |
+| `hookline_delivery_deferrals_total`                                              | Mensagens adiadas sem gastar tentativa, por motivo                            |
+| `hookline_endpoints_circuit_open`                                                | Endpoints com o disjuntor aberto                                              |
+
+Os rótulos só assumem valores de conjuntos pequenos e fixos. O detalhe por endpoint fica no banco.
+
 ## Imagens publicadas
 
 Todo merge na `main` publica as três imagens para `linux/amd64` e `linux/arm64`, com as tags `sha-<commit>` e `main`, e uma tag `v*` acrescenta a versão:

@@ -9,6 +9,7 @@ import {
   type Pool,
   type PoolClient,
 } from '@hookline/shared';
+import type { ApiMetrics } from '../app.js';
 import { notFound, ProblemError } from '../errors.js';
 import { PaginationQuery, toPage } from '../pagination.js';
 
@@ -43,10 +44,10 @@ async function createDeliveries(
   return deliveryIds.length;
 }
 
-export const eventRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (
-  app,
-  { pool },
-) => {
+export const eventRoutes: FastifyPluginAsyncTypebox<{
+  pool: Pool;
+  metrics: ApiMetrics;
+}> = async (app, { pool, metrics }) => {
   app.post(
     '/events',
     {
@@ -121,6 +122,9 @@ export const eventRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (
 
       if (accepted.replayed) {
         reply.header('idempotent-replayed', 'true');
+      } else {
+        metrics.eventsAccepted.inc();
+        metrics.deliveriesCreated.inc(accepted.deliveries);
       }
       return reply
         .code(202)

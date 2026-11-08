@@ -1,5 +1,10 @@
 import { buildApp, createProject, runMigrations } from '@hookline/api';
-import { connectBroker, createPool, parseRetryDelays } from '@hookline/shared';
+import {
+  connectBroker,
+  createPool,
+  parseRetryDelays,
+  Registry,
+} from '@hookline/shared';
 import { startReceiver } from '@hookline/test-receiver';
 import { startDeliveryWorker, startRelay } from '@hookline/worker';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
@@ -28,12 +33,20 @@ export async function startHarness(
   await runMigrations(postgres.getConnectionUri());
 
   const pool = createPool(postgres.getConnectionUri());
+  // Each process gets a registry of its own, as in production, where each
+  // runs in its own Node process.
+  const registries = {
+    api: new Registry(),
+    relay: new Registry(),
+    worker: new Registry(),
+  };
   const broker = connectBroker(rabbit.getAmqpUrl());
   // The test receiver runs on localhost, which production would block.
   const app = await buildApp({
     pool,
     encryptionKey,
     allowPrivateTargets: true,
+    registry: registries.api,
   });
   const receiver = await startReceiver();
   const retryDelays = parseRetryDelays(retrySchedule);
@@ -42,8 +55,8 @@ export async function startHarness(
   // Used only to inspect the queues; the topology belongs to the processes.
   const inspector = broker.createChannel({ json: false });
 
-  function newRelay() {
-    return startRelay({ pool, broker, logger, pollIntervalMs: 50 });
+  function newRelay(registry = new Registry()) {
+    return startRelay({ pool, broker, logger, pollIntervalMs: 50, registry });
   }
 
   function newWorker(options: WorkerOptions = {}) {
@@ -54,12 +67,16 @@ export async function startHarness(
       logger,
       retryDelays,
       allowPrivateTargets: true,
+      registry: new Registry(),
       ...workerDefaults,
       ...options,
     });
   }
 
-  const processes = { relay: newRelay(), worker: newWorker() };
+  const processes = {
+    relay: newRelay(registries.relay),
+    worker: newWorker({ registry: registries.worker }),
+  };
 
   async function call(
     method: Method,
@@ -125,6 +142,7 @@ export async function startHarness(
     receiver,
     inspector,
     processes,
+    registries,
     newRelay,
     newWorker,
     call,

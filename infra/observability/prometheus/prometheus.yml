@@ -1,0 +1,19 @@
+# Scrapes the stack started by pnpm stack:up, inside the compose network.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Each Hookline process serves /metrics on its internal ops port, which
+  # is never published outside the compose network.
+  - job_name: hookline
+    static_configs:
+      - targets: ['api:9464', 'relay:9464', 'deliver:9464']
+
+  # The rabbitmq_prometheus plugin, enabled in the official image. The
+  # per-object endpoint has one series per queue, so the dashboard can show
+  # the wait queues and the DLQ apart.
+  - job_name: rabbitmq
+    metrics_path: /metrics/per-object
+    static_configs:
+      - targets: ['rabbitmq:15692']
