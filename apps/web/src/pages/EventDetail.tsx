@@ -4,6 +4,7 @@ import { REFRESH_MS } from '../api/queries';
 import { isFinal, type EventDetail as Detail } from '../api/types';
 import { useApi } from '../auth';
 import { RetryButton } from '../components/RetryButton';
+import { RoutePips } from '../components/Route';
 import {
   codeClass,
   Empty,
@@ -12,7 +13,6 @@ import {
   PageHeader,
   StatusBadge,
   Table,
-  Time,
   Url,
 } from '../components/ui';
 import { formatDate, formatJson } from '../format';
@@ -65,9 +65,7 @@ export function EventDetail() {
           {count === 0 ? (
             <Empty>No endpoint subscribes to this event type.</Empty>
           ) : (
-            <Table
-              head={['Endpoint', 'Status', 'Attempts', 'Next attempt', '']}
-            >
+            <Table head={['Endpoint', 'Status', '']}>
               {data.deliveries.map((delivery) => (
                 <tr key={delivery.id}>
                   <td>
@@ -77,17 +75,14 @@ export function EventDetail() {
                     >
                       <Url url={delivery.endpoint_url} />
                     </Link>
+                    <div className="mt-1.5">
+                      <RoutePips delivery={delivery} />
+                    </div>
                   </td>
                   <td>
                     <StatusBadge status={delivery.status} />
                   </td>
-                  <td className="font-mono text-[13px]">
-                    {delivery.attempt_count}
-                  </td>
-                  <td className="whitespace-nowrap text-ink-2">
-                    <Time value={delivery.next_attempt_at} />
-                  </td>
-                  <td>
+                  <td className="text-right">
                     {delivery.status === 'dead' && (
                       <RetryButton deliveryId={delivery.id} size="sm" />
                     )}
