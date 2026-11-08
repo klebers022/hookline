@@ -8,7 +8,7 @@ Reliable webhook delivery: publish an event once, and Hookline delivers it at le
 
 ## Requirements
 
-- Node.js 24 (see `.nvmrc`)
+- Node.js 26 (see `.nvmrc`)
 - pnpm, through Corepack (`corepack enable`)
 - Docker with Compose
 
