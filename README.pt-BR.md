@@ -174,13 +174,13 @@ Os processos só escrevem linhas JSON no stdout. O Alloy lê os logs dos contêi
 
 As regras de alerta ficam em `infra/observability/prometheus/alerts.yml`, e `pnpm obs:test-rules` roda os testes delas com o promtool, como o CI faz:
 
-| Alerta                     | Dispara quando                                                            |
-| -------------------------- | ------------------------------------------------------------------------- |
-| `HooklineOutboxStuck`      | A linha pendente mais antiga da outbox passa de 60 s por 2 minutos        |
-| `HooklineDeadLetters`      | Uma entrega chegou à DLQ nos últimos 10 minutos                           |
-| `HooklineFirstAttemptSlow` | O p99 do atraso até a 1ª tentativa passa de 5 s por 5 minutos (SLO)       |
-| `HooklineHighFailureRate`  | Mais da metade das tentativas falhou nos últimos 5 minutos, por 2 minutos |
-| `HooklineProcessDown`      | O Prometheus não consegue coletar um processo por um minuto               |
+| Alerta                     | Dispara quando                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `HooklineOutboxStuck`      | A linha pendente mais antiga da outbox passa de 60 s por 2 minutos                                     |
+| `HooklineDeadLetters`      | Uma entrega chegou à DLQ nos últimos 10 minutos                                                        |
+| `HooklineFirstAttemptSlow` | O p99 do atraso até a 1ª tentativa passa de 5 s por 5 minutos (SLO)                                    |
+| `HooklineHighFailureRate`  | Mais da metade das entregas falhou ou esperou um disjuntor aberto nos últimos 5 minutos, por 2 minutos |
+| `HooklineProcessDown`      | O Prometheus não consegue coletar um processo por um minuto                                            |
 
 Ainda não há envio de avisos: os alertas disparados aparecem na página Alerts do Prometheus e no painel.
 
