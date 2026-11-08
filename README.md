@@ -50,6 +50,12 @@ pnpm dev:deliver
 pnpm dev:receiver
 ```
 
+```bash
+pnpm dev:web
+```
+
+The dashboard is at <http://localhost:5173>: sign in with the API key from `pnpm project:create` to browse events, see every delivery attempt, retry failed deliveries and manage endpoints. It calls the API on its own origin, and Vite forwards `/v1` to the API. The key stays in the tab's memory, so reloading the page asks for it again.
+
 The API documentation is at <http://localhost:3000/docs>. To send a test webhook, register the test receiver as an endpoint and publish an event, replacing `<API_KEY>`:
 
 ```bash

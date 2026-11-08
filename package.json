@@ -34,12 +34,15 @@
     "dev:api": "pnpm --filter @hookline/api dev",
     "dev:relay": "pnpm --filter @hookline/worker dev:relay",
     "dev:deliver": "pnpm --filter @hookline/worker dev:deliver",
-    "dev:receiver": "pnpm --filter @hookline/test-receiver dev"
+    "dev:receiver": "pnpm --filter @hookline/test-receiver dev",
+    "dev:web": "pnpm --filter @hookline/web dev"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
     "prettier": "^3.9.10",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1"
