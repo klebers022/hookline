@@ -8,13 +8,22 @@ updates:
     groups:
       actions: { patterns: ['*'] }
 
+  # A new major version of Node, PostgreSQL or RabbitMQ needs a planned
+  # change: .nvmrc and CI move with Node, and the databases' stored data may
+  # not open in it. Those are done by hand.
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker-compose
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /
