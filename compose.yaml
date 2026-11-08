@@ -15,6 +15,9 @@ x-app-env: &app-env
   # not published: only Prometheus, inside this network, reads it.
   METRICS_HOST: 0.0.0.0
   METRICS_PORT: '9464'
+  # Traces go to Tempo, from the observability profile. While it is not
+  # running, the spans are dropped and the app works the same.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4318}
 
 x-api-image: &api-image
   image: hookline-api:${HOOKLINE_TAG:-local}
@@ -87,7 +90,9 @@ services:
   api:
     <<: *api-image
     profiles: [app]
-    environment: *app-env
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: hookline-api
     ports:
       - '127.0.0.1:3000:3000'
     depends_on: *after-migrate
@@ -107,8 +112,15 @@ services:
   relay:
     <<: *worker-image
     profiles: [app]
-    command: ['node', '--enable-source-maps', 'dist/main-relay.js']
-    environment: *app-env
+    command:
+      - node
+      - --enable-source-maps
+      - --import
+      - '@hookline/shared/tracing'
+      - dist/main-relay.js
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: hookline-relay
     depends_on: *after-migrate
     stop_grace_period: 35s
     healthcheck: *ops-healthcheck
@@ -116,7 +128,9 @@ services:
   deliver:
     <<: *worker-image
     profiles: [app]
-    environment: *app-env
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: hookline-deliver
     depends_on: *after-migrate
     stop_grace_period: 35s
     healthcheck: *ops-healthcheck
@@ -142,6 +156,17 @@ services:
       - ./infra/observability/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
 
+  tempo:
+    image: grafana/tempo:3.1.1
+    profiles: [observability]
+    command: ['-config.file=/etc/tempo/tempo.yml']
+    # OTLP over HTTP, for processes running outside the compose network.
+    ports:
+      - '127.0.0.1:4318:4318'
+    volumes:
+      - ./infra/observability/tempo:/etc/tempo:ro
+      - tempo-data:/var/tempo
+
   grafana:
     image: grafana/grafana:13.3.0
     profiles: [observability]
@@ -156,9 +181,10 @@ services:
     volumes:
       - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    depends_on: [prometheus]
+    depends_on: [prometheus, tempo]
 
 volumes:
   postgres-data:
   rabbitmq-data:
   prometheus-data:
+  tempo-data:

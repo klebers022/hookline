@@ -143,7 +143,7 @@ pnpm obs:down
 
 Each process serves `/metrics` (Prometheus format), `/healthz` and `/readyz` on an ops port of its own, which is never the API's public port: `METRICS_PORT`, 9464 in containers, and 9464, 9465 and 9466 for the API, the relay and the delivery worker under `pnpm dev:*`. It listens on `127.0.0.1` unless `METRICS_HOST` says otherwise.
 
-`pnpm obs:up` starts Prometheus at <http://localhost:9090> and Grafana at <http://localhost:3001>, which opens on the "Hookline – visão geral" dashboard. Prometheus scrapes the containers started by `pnpm stack:up` and RabbitMQ's queue metrics. The dashboard and data sources are provisioned from `infra/observability`, so edit the JSON there rather than in the UI.
+`pnpm obs:up` starts Prometheus at <http://localhost:9090>, Tempo for traces, and Grafana at <http://localhost:3001>, which opens on the "Hookline – visão geral" dashboard. Prometheus scrapes the containers started by `pnpm stack:up` and RabbitMQ's queue metrics. The dashboard and data sources are provisioned from `infra/observability`, so edit the JSON there rather than in the UI.
 
 | Metric                                                                           | What it shows                                                            |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -157,6 +157,14 @@ Each process serves `/metrics` (Prometheus format), `/healthz` and `/readyz` on 
 | `hookline_endpoints_circuit_open`                                                | Endpoints with an open circuit breaker                                   |
 
 Labels only take values from small, fixed sets. Per-endpoint detail stays in the database.
+
+### Traces
+
+The API, relay and delivery worker send OpenTelemetry traces over OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, which the compose stack does, pointing at Tempo. Without it, tracing does not load. The images load it with `node --import @hookline/shared/tracing` before the app, which traces HTTP requests, PostgreSQL queries and the webhook POST, and adds `trace_id` and `span_id` to log lines.
+
+A trace crosses the outbox and the queue by hand: each outbox row stores the W3C trace context of the code that wrote it (`outbox.trace_context`), the relay publishes as a child of it and sends its own context in the message headers, and the delivery worker continues from there. So one trace shows `POST /v1/events`, the database writes, the publish, the delivery attempt and the endpoint's response. A retry, which can come hours later, starts a new trace with a link to the previous attempt's. In Grafana, open Explore, pick Tempo and search, for example, `{ name = "POST /v1/events" }`.
+
+Webhook requests carry a `traceparent` header, so an endpoint that traces can join the same trace.
 
 ## Published images
 

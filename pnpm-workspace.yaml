@@ -9,3 +9,9 @@ allowBuilds:
   esbuild: false
   protobufjs: false
   ssh2: false
+
+minimumReleaseAgeExclude:
+  - '@opentelemetry/instrumentation-pg@0.78.0'
+  - '@opentelemetry/instrumentation-pino@0.71.0'
+  - '@opentelemetry/instrumentation-undici@0.35.0'
+  - '@opentelemetry/sql-common@0.43.1'

@@ -4,7 +4,9 @@ import {
   DELIVERIES_EXCHANGE,
   Gauge,
   Registry,
+  withPublishSpan,
   withTransaction,
+  type TraceCarrier,
   type Broker,
   type Pool,
 } from '@hookline/shared';
@@ -27,7 +29,8 @@ export interface RelayOptions {
 interface OutboxRow {
   id: string;
   routing_key: string;
-  payload: unknown;
+  payload: { delivery_id?: string; attempt?: number };
+  trace_context: TraceCarrier | null;
 }
 
 // delivery.ready, delivery.wait.5m and delivery.dead become ready, wait and
@@ -114,7 +117,7 @@ export function startRelay({
   async function publishBatch(): Promise<number> {
     return withTransaction(pool, async (client) => {
       const { rows } = await client.query<OutboxRow>(
-        `SELECT id, routing_key, payload FROM outbox
+        `SELECT id, routing_key, payload, trace_context FROM outbox
          WHERE published_at IS NULL
          ORDER BY id
          LIMIT $1
@@ -127,15 +130,31 @@ export function startRelay({
 
       await Promise.all(
         rows.map((row) =>
-          channel.publish(
-            DELIVERIES_EXCHANGE,
-            row.routing_key,
-            Buffer.from(JSON.stringify(row.payload)),
+          // In the trace of whoever wrote the row, which the message headers
+          // carry on to the delivery worker.
+          withPublishSpan(
+            `publish ${row.routing_key}`,
+            row.trace_context,
             {
-              persistent: true,
-              contentType: 'application/json',
-              timeout: PUBLISH_TIMEOUT_MS,
+              'messaging.system': 'rabbitmq',
+              'messaging.operation.type': 'send',
+              'messaging.destination.name': DELIVERIES_EXCHANGE,
+              'messaging.rabbitmq.destination.routing_key': row.routing_key,
+              'hookline.delivery.id': row.payload.delivery_id ?? '',
+              'hookline.delivery.attempt': row.payload.attempt ?? 0,
             },
+            (headers) =>
+              channel.publish(
+                DELIVERIES_EXCHANGE,
+                row.routing_key,
+                Buffer.from(JSON.stringify(row.payload)),
+                {
+                  persistent: true,
+                  contentType: 'application/json',
+                  timeout: PUBLISH_TIMEOUT_MS,
+                  headers,
+                },
+              ),
           ),
         ),
       );
