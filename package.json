@@ -22,6 +22,7 @@
     "stack:up": "docker compose --profile app up -d --build --wait",
     "stack:down": "docker compose --profile app down",
     "stack:smoke": "node scripts/smoke.mjs",
+    "stack:e2e": "pnpm --filter @hookline/e2e e2e",
     "obs:up": "docker compose --profile observability up -d --wait prometheus tempo loki alloy grafana",
     "obs:down": "docker compose --profile observability rm --stop --force prometheus tempo loki alloy grafana",
     "obs:reload": "docker compose --profile observability restart prometheus grafana",

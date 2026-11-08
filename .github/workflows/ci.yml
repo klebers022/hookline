@@ -28,15 +28,32 @@ jobs:
   # Builds the images and runs the whole stack in containers, end to end.
   infra:
     runs-on: ubuntu-latest
+    env:
+      # A delivery runs out of attempts in seconds, for the Playwright test.
+      RETRY_DELAYS: 1s,1s,1s,1s,1s
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          cache: pnpm
       # Unit tests for the Prometheus alert rules.
       - run: docker run --rm -v ./infra/observability/prometheus:/rules -w /rules --entrypoint promtool prom/prometheus:v3.16.0 test rules alerts.test.yml
       - run: docker compose --profile app up -d --build --wait
       - run: node scripts/smoke.mjs
+      - run: pnpm install --frozen-lockfile --filter @hookline/e2e
+      - run: pnpm --filter @hookline/e2e exec playwright install --with-deps chromium
+      - run: pnpm stack:e2e
+        env:
+          CI: 'true'
+      # The trace of a failed test: every step, with the page and network.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report
+          retention-days: 7
       - if: failure()
         run: docker compose --profile app logs
       - if: always()

@@ -147,6 +147,21 @@ services:
     ports:
       - '127.0.0.1:4000:4000'
 
+  # The dashboard, which forwards /v1 to the API.
+  web:
+    image: hookline-web:${HOOKLINE_TAG:-local}
+    build: { context: ., target: web }
+    profiles: [app]
+    ports:
+      - '127.0.0.1:8080:8080'
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/healthz']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # Observability, with the "observability" profile (pnpm obs:up). It reads
   # the app services above, so start them with pnpm stack:up.
   prometheus:

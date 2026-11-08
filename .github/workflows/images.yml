@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [api, worker, test-receiver]
+        target: [api, worker, test-receiver, web]
     permissions:
       contents: read
       packages: write
