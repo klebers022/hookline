@@ -61,6 +61,9 @@ services:
 
   rabbitmq:
     image: rabbitmq:4.4-management-alpine
+    # RabbitMQ keeps its data under its node name, rabbit@<hostname>. Without a
+    # fixed hostname, each new container starts over with empty queues.
+    hostname: rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-hookline}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-hookline}
