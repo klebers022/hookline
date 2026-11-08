@@ -65,6 +65,7 @@ export {
   startOpsServer,
   type OpsServerOptions,
 } from './telemetry/metrics.js';
+export { registerDatabaseGauges } from './telemetry/database-metrics.js';
 export {
   captureTraceContext,
   markSpanFailed,

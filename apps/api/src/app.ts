@@ -7,6 +7,7 @@ import {
   Histogram,
   nameServerSpan,
   Registry,
+  registerDatabaseGauges,
   type Pool,
   type ResolveHost,
 } from '@hookline/shared';
@@ -71,6 +72,9 @@ export async function buildApp({
     logger,
     bodyLimit: BODY_LIMIT_BYTES,
   }).withTypeProvider<TypeBoxTypeProvider>();
+  // The outbox and circuit breaker gauges, also reported by the relay, so
+  // they outlive it: a stopped relay cannot report its own stuck outbox.
+  registerDatabaseGauges(registry, pool, app.log);
 
   // Some clients send a Content-Type on a POST without a body, such as a
   // retry. An empty body is accepted whatever its type, and any other body
