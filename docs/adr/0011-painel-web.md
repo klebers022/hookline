@@ -47,4 +47,5 @@ Um segundo teste confere que recarregar a página esquece a chave e que nada fic
 - Recarregar a página ou abrir outra aba pede a chave de novo.
 - A atualização automática conta no rate limit do projeto: uma tela aberta faz até 20 pedidos por minuto enquanto houver entrega em andamento.
 - Uma mudança no formato das respostas da API precisa ser repetida em `types.ts`. O `tsc` não avisa; o Playwright avisa só no que ele percorre.
+- A imagem do nginx é reconstruída com menos frequência do que o Alpine corrige pacotes, então o build roda `apk upgrade` (e remove o `curl`, que não é usado). Isso deixa o build menos reprodutível: duas construções do mesmo commit podem ter versões diferentes de pacotes do Alpine.
 - A pasta `apps/web/dist` vai para a imagem `hookline-web`. O `pnpm build` da raiz passa a compilar o painel também.
