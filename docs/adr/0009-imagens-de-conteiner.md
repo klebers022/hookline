@@ -12,7 +12,7 @@ A API, o relay, o worker de entrega e o receptor de teste precisam rodar em Dock
 
 **Um `Dockerfile` multi-stage.** Um estágio instala, compila e monta cada app com `pnpm deploy --prod`, que deixa só o `dist/` e as dependências de produção. Há um alvo por imagem: `api` (que também roda as migrações), `worker` (carteiro por padrão, relay por comando) e `test-receiver`.
 
-**Imagem final mínima.** Base `node:24-alpine` fixada por digest, sem npm, npx, corepack e yarn, com `USER node`. O `CMD` em formato exec deixa o `node` como processo 1, recebendo o `SIGTERM`.
+**Imagem final mínima.** Base `node:26-alpine` fixada por digest, sem npm, npx e yarn, com `USER node`. O `CMD` em formato exec deixa o `node` como processo 1, recebendo o `SIGTERM`.
 
 **Multi-arch por cópia.** O estágio de build roda na arquitetura da máquina (`--platform=$BUILDPLATFORM`). Como nenhuma dependência de produção tem código nativo, a mesma pasta serve para `amd64` e `arm64`. Sob emulação, só rodam a remoção dos gerenciadores de pacote e as cópias.
 
