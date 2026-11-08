@@ -2,9 +2,13 @@
 
 Reliable webhook delivery: publish an event once, and Hookline delivers it at least once or moves it to a dead-letter queue, with an auditable history of every attempt.
 
-> **Status:** early development. Events are delivered, signed, recorded, and retried, and exhausted deliveries go to a dead-letter queue. Endpoint URLs are protected against SSRF, a failing or overloaded endpoint does not hold back the others, and processes shut down without cutting deliveries short. Container images, observability, and a dashboard come next.
+> **Status:** early development. Events are delivered, signed, recorded, and retried, and exhausted deliveries go to a dead-letter queue. Endpoint URLs are protected against SSRF, a failing or overloaded endpoint does not hold back the others, and processes shut down without cutting deliveries short. Container images are published for amd64 and arm64, metrics, traces and logs show what every delivery went through, and a web dashboard shows each attempt and retries failed deliveries. Kubernetes and a public deployment come next.
 
 [Leia em português](README.pt-BR.md)
+
+![Dashboard: a delivery that failed twice and then succeeded](docs/images/dashboard.png)
+
+_The dashboard shows every attempt of a delivery, with its HTTP status, duration and response._
 
 ## Requirements
 
@@ -54,7 +58,7 @@ pnpm dev:receiver
 pnpm dev:web
 ```
 
-The dashboard is at <http://localhost:5173>: sign in with the API key from `pnpm project:create` to browse events, see every delivery attempt, retry failed deliveries and manage endpoints. It calls the API on its own origin, and Vite forwards `/v1` to the API. The key stays in the tab's memory, so reloading the page asks for it again.
+The dashboard is at <http://localhost:5173>: sign in with the API key that `pnpm project:create` printed (it is shown only once) to browse events, see every delivery attempt, retry failed deliveries and manage endpoints. It calls the API on its own origin, and Vite forwards `/v1` to the API. The key stays in the tab's memory, so reloading the page asks for it again.
 
 The API documentation is at <http://localhost:3000/docs>. To send a test webhook, register the test receiver as an endpoint and publish an event, replacing `<API_KEY>`:
 
@@ -124,12 +128,13 @@ A second signal, or 30 seconds without finishing, ends the process at once.
 ```sh
 pnpm stack:up
 pnpm stack:smoke
+pnpm stack:e2e
 pnpm stack:down
 ```
 
-`pnpm stack:up` builds the images from the `Dockerfile` and starts the whole stack: migrations, API at <http://localhost:3000>, relay, delivery worker and test receiver at <http://localhost:4000>, which endpoints reach as `http://test-receiver:4000/hooks`. It uses the same ports as the `pnpm dev:*` scripts, so run one or the other. `pnpm stack:smoke` publishes an event end to end and stops the delivery worker during a slow delivery to check that the delivery is still recorded. CI runs the same check on every pull request.
+`pnpm stack:up` builds the images from the `Dockerfile` and starts the whole stack: migrations, API at <http://localhost:3000>, relay, delivery worker, test receiver at <http://localhost:4000>, which endpoints reach as `http://test-receiver:4000/hooks`, and the dashboard at <http://localhost:8080>. It uses the same ports as the `pnpm dev:*` scripts, so run one or the other. `pnpm stack:smoke` publishes an event end to end and stops the delivery worker during a slow delivery to check that the delivery is still recorded. `pnpm stack:e2e` runs the Playwright test of the dashboard (install its browser once with `pnpm --filter @hookline/e2e exec playwright install chromium`): a delivery fails, and the test finds it, reads its attempts, enables its endpoint again and retries it until it succeeds. It needs short retry delays, so start the stack with `RETRY_DELAYS=1s,1s,1s,1s,1s pnpm stack:up`. CI runs both on every pull request.
 
-There are three images, each running as the unprivileged `node` user with `node` as process 1:
+There are four images. The three Node ones run as the unprivileged `node` user with `node` as process 1:
 
 | Image                    | Command                                                                                                                |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
@@ -137,7 +142,9 @@ There are three images, each running as the unprivileged `node` user with `node`
 | `hookline-worker`        | `node dist/main-deliver.js` by default; `node dist/main-relay.js` for the relay                                        |
 | `hookline-test-receiver` | `node dist/main.js`                                                                                                    |
 
-Create a project in the running stack with `docker compose --profile app run --rm api node dist/scripts/create-project.js <name>`.
+`hookline-web` is nginx running as an unprivileged user on port 8080. It serves the dashboard and forwards `/v1` to `API_URL` (`http://api:3000` by default), so the browser sees a single origin and the API needs no CORS. Its responses carry a strict Content Security Policy, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
+
+Create a project in the running stack with `docker compose --profile app run --rm api node dist/scripts/create-project.js <name>`. It prints the project's API key once, which is what the dashboard asks for; only a hash of it is stored.
 
 ## Observability
 
@@ -218,7 +225,7 @@ The k6 scenarios in `load-tests/` run in a container inside the compose network 
 
 ## Published images
 
-Every merge to `main` publishes the three images for `linux/amd64` and `linux/arm64`, tagged `sha-<commit>` and `main`, and a `v*` tag adds its version:
+Every merge to `main` publishes the four images for `linux/amd64` and `linux/arm64`, tagged `sha-<commit>` and `main`, and a `v*` tag adds its version:
 
 ```sh
 docker pull ghcr.io/klebers022/hookline-api:main

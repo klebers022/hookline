@@ -1,0 +1,41 @@
+# The dashboard's static files, and /v1 forwarded to the API, so the browser
+# sees one origin and the API needs no CORS (ADR 11). The image's entrypoint
+# fills in ${API_URL} from the environment; nginx's own variables, such as
+# $uri, are left alone because they are not set in the environment.
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    server_tokens off;
+
+    # Inherited by every location below, none of which sets add_header.
+    # The build has no inline scripts or styles, so 'self' is enough.
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location /v1/ {
+        proxy_pass ${API_URL};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Vite puts a hash of the content in these names, so they never change.
+    location /assets/ {
+        expires 1y;
+    }
+
+    # Any other path is a dashboard route, served by index.html, which is
+    # checked again on every visit so a new release shows up at once.
+    location / {
+        expires -1;
+        try_files $uri /index.html;
+    }
+}

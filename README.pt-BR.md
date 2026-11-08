@@ -2,9 +2,13 @@
 
 Entrega confiável de webhooks: publique um evento uma vez, e o Hookline o entrega pelo menos uma vez ou o move para uma dead-letter queue, com histórico auditável de cada tentativa.
 
-> **Status:** início do desenvolvimento. Os eventos são entregues, assinados, registrados e reenviados em caso de falha, e as entregas esgotadas vão para uma dead-letter queue. As URLs dos endpoints são protegidas contra SSRF, um endpoint com falha ou sobrecarga não atrasa os outros, e os processos encerram sem interromper entregas. Imagens de contêiner, observabilidade e um painel vêm a seguir.
+> **Status:** início do desenvolvimento. Os eventos são entregues, assinados, registrados e reenviados em caso de falha, e as entregas esgotadas vão para uma dead-letter queue. As URLs dos endpoints são protegidas contra SSRF, um endpoint com falha ou sobrecarga não atrasa os outros, e os processos encerram sem interromper entregas. As imagens de contêiner são publicadas para amd64 e arm64, métricas, traces e logs mostram por onde cada entrega passou, e um painel web mostra cada tentativa e reenvia as entregas com falha. Kubernetes e um deploy público vêm a seguir.
 
 [Read in English](README.md)
+
+![Painel: uma entrega que falhou duas vezes e depois deu certo](docs/images/dashboard.png)
+
+_O painel mostra cada tentativa de uma entrega, com o status HTTP, a duração e a resposta._
 
 ## Requisitos
 
@@ -54,7 +58,7 @@ pnpm dev:receiver
 pnpm dev:web
 ```
 
-O painel fica em <http://localhost:5173>: entre com a API key do `pnpm project:create` para ver os eventos e cada tentativa de entrega, reenviar entregas com falha e gerenciar os endpoints. Ele chama a API no próprio endereço, e o Vite repassa `/v1` para a API. A chave fica só na memória da aba, então recarregar a página pede a chave de novo.
+O painel fica em <http://localhost:5173>: entre com a API key que o `pnpm project:create` mostrou (ela aparece uma única vez) para ver os eventos e cada tentativa de entrega, reenviar entregas com falha e gerenciar os endpoints. Ele chama a API no próprio endereço, e o Vite repassa `/v1` para a API. A chave fica só na memória da aba, então recarregar a página pede a chave de novo.
 
 A documentação da API fica em <http://localhost:3000/docs>. Para enviar um webhook de teste, cadastre o receptor como endpoint e publique um evento, substituindo `<API_KEY>`:
 
@@ -124,12 +128,13 @@ Um segundo sinal, ou 30 segundos sem terminar, encerra o processo na hora.
 ```sh
 pnpm stack:up
 pnpm stack:smoke
+pnpm stack:e2e
 pnpm stack:down
 ```
 
-`pnpm stack:up` constrói as imagens a partir do `Dockerfile` e sobe a stack inteira: migrações, API em <http://localhost:3000>, relay, worker de entrega e receptor de teste em <http://localhost:4000>, que os endpoints acessam como `http://test-receiver:4000/hooks`. Usa as mesmas portas dos scripts `pnpm dev:*`, então rode um ou outro. `pnpm stack:smoke` publica um evento de ponta a ponta e para o worker de entrega durante uma entrega lenta, para conferir que ela ainda é registrada. O CI roda a mesma checagem em todo pull request.
+`pnpm stack:up` constrói as imagens a partir do `Dockerfile` e sobe a stack inteira: migrações, API em <http://localhost:3000>, relay, worker de entrega, receptor de teste em <http://localhost:4000>, que os endpoints acessam como `http://test-receiver:4000/hooks`, e o painel em <http://localhost:8080>. Usa as mesmas portas dos scripts `pnpm dev:*`, então rode um ou outro. `pnpm stack:smoke` publica um evento de ponta a ponta e para o worker de entrega durante uma entrega lenta, para conferir que ela ainda é registrada. `pnpm stack:e2e` roda o teste Playwright do painel (instale o navegador uma vez com `pnpm --filter @hookline/e2e exec playwright install chromium`): uma entrega falha, e o teste a encontra, lê as tentativas, reativa o endpoint e a reenvia até dar certo. Ele precisa de esperas curtas, então suba a stack com `RETRY_DELAYS=1s,1s,1s,1s,1s pnpm stack:up`. O CI roda os dois em todo pull request.
 
-São três imagens, todas rodando com o usuário sem privilégios `node` e com o `node` como processo 1:
+São quatro imagens. As três de Node rodam com o usuário sem privilégios `node` e com o `node` como processo 1:
 
 | Imagem                   | Comando                                                                                                                |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
@@ -137,7 +142,9 @@ São três imagens, todas rodando com o usuário sem privilégios `node` e com o
 | `hookline-worker`        | `node dist/main-deliver.js` por padrão; `node dist/main-relay.js` para o relay                                         |
 | `hookline-test-receiver` | `node dist/main.js`                                                                                                    |
 
-Crie um projeto na stack em execução com `docker compose --profile app run --rm api node dist/scripts/create-project.js <nome>`.
+A `hookline-web` é um nginx rodando com usuário sem privilégios na porta 8080. Ela serve o painel e repassa `/v1` para `API_URL` (`http://api:3000` por padrão), então o navegador vê uma única origem e a API não precisa de CORS. As respostas levam uma Content Security Policy restrita, `X-Content-Type-Options: nosniff` e `Referrer-Policy: no-referrer`.
+
+Crie um projeto na stack em execução com `docker compose --profile app run --rm api node dist/scripts/create-project.js <nome>`. Ele mostra a API key do projeto uma única vez, e é ela que o painel pede; o banco guarda só o hash.
 
 ## Observabilidade
 
@@ -218,7 +225,7 @@ Os cenários do k6 em `load-tests/` rodam num contêiner dentro da rede do compo
 
 ## Imagens publicadas
 
-Todo merge na `main` publica as três imagens para `linux/amd64` e `linux/arm64`, com as tags `sha-<commit>` e `main`, e uma tag `v*` acrescenta a versão:
+Todo merge na `main` publica as quatro imagens para `linux/amd64` e `linux/arm64`, com as tags `sha-<commit>` e `main`, e uma tag `v*` acrescenta a versão:
 
 ```sh
 docker pull ghcr.io/klebers022/hookline-api:main
