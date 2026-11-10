@@ -55,7 +55,7 @@ CMD ["node", "--enable-source-maps", "dist/main.js"]
 
 # The dashboard: static files that are the same on every architecture, served
 # by nginx as a non-root user on port 8080. API_URL is where /v1 goes.
-FROM nginxinc/nginx-unprivileged:1.30-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03 AS web
+FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e AS web
 # The base image is rebuilt less often than Alpine fixes its packages, so the
 # fixes are applied here. curl is not used: the healthcheck uses busybox wget.
 USER root
