@@ -191,7 +191,7 @@ services:
       - tempo-data:/var/tempo
 
   loki:
-    image: grafana/loki:3.6.20
+    image: grafana/loki:3.7.9
     profiles: [observability]
     command: ['-config.file=/etc/loki/loki.yml']
     volumes:
