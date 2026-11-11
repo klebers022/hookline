@@ -216,3 +216,30 @@ export function Field({
 
 export const codeClass =
   'overflow-x-auto rounded-md border border-rule-soft bg-code px-3.5 py-3 font-mono text-[13px] leading-relaxed text-ink';
+
+// An on/off control that says its state to screen readers (role="switch").
+export function Switch({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors after:absolute after:top-[3px] after:left-[3px] after:size-3.5 after:rounded-full after:bg-surface after:transition-transform after:content-[''] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none motion-reduce:after:transition-none ${
+        checked ? 'bg-ok after:translate-x-4' : 'bg-rule'
+      }`}
+    />
+  );
+}

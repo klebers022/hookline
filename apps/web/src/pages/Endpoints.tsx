@@ -13,7 +13,7 @@ import {
   Loading,
   monoInputClass,
   PageHeader,
-  StatusBadge,
+  Switch,
   Table,
   Url,
 } from '../components/ui';
@@ -53,7 +53,7 @@ export function Endpoints() {
       ) : list.rows.length === 0 ? (
         <Empty>No endpoints yet. Add one to start receiving events.</Empty>
       ) : (
-        <Table head={['URL', 'Event types', 'Status', 'Health', '']}>
+        <Table head={['URL', 'Event types', 'Health', 'Active', '']}>
           {list.rows.map((endpoint) => (
             <EndpointRow
               key={endpoint.id}
@@ -118,11 +118,10 @@ function EndpointRow({
           ))}
         </div>
       </td>
-      <td>
-        <StatusBadge status={endpoint.status} />
-      </td>
       <td className="text-[13px]">
-        {circuitOpen ? (
+        {endpoint.status === 'disabled' ? (
+          <span className="text-ink-3">Off: receives no events</span>
+        ) : circuitOpen ? (
           <>
             <span className="font-medium text-bad">
               Paused until {formatTime(endpoint.circuit_open_until)}
@@ -142,15 +141,15 @@ function EndpointRow({
         )}
       </td>
       <td>
+        <Switch
+          label="Active"
+          checked={endpoint.status === 'active'}
+          disabled={toggle.isPending}
+          onChange={() => toggle.mutate()}
+        />
+      </td>
+      <td>
         <div className="flex flex-wrap justify-end gap-1">
-          <Button
-            variant="quiet"
-            size="sm"
-            disabled={toggle.isPending}
-            onClick={() => toggle.mutate()}
-          >
-            {endpoint.status === 'active' ? 'Disable' : 'Enable'}
-          </Button>
           <Button
             variant="quiet"
             size="sm"
