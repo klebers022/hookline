@@ -1,0 +1,24 @@
+# The CI job's cluster: images built from the pull request and imported into
+# k3d (pnpm k8s:images), and deliveries that run out of tries in seconds.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../local
+configMapGenerator:
+  - name: hookline-config
+    behavior: merge
+    literals:
+      - RETRY_DELAYS=1s,1s,1s,1s,1s
+images:
+  - name: ghcr.io/klebers022/hookline-api
+    newName: hookline-api
+    newTag: ci
+  - name: ghcr.io/klebers022/hookline-worker
+    newName: hookline-worker
+    newTag: ci
+  - name: ghcr.io/klebers022/hookline-web
+    newName: hookline-web
+    newTag: ci
+  - name: ghcr.io/klebers022/hookline-test-receiver
+    newName: hookline-test-receiver
+    newTag: ci

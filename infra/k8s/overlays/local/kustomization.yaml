@@ -1,0 +1,24 @@
+# The cluster on this machine (pnpm k8s:up), with the images main published.
+# pnpm k8s:bump moves the tag to a newer build of main.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The base sets it only on its own resources.
+namespace: hookline
+resources:
+  - ../../base
+  - test-receiver.yaml
+configMapGenerator:
+  - name: hookline-config
+    behavior: merge
+    literals:
+      # Lets endpoints point at the test receiver inside the cluster.
+      - ALLOW_PRIVATE_TARGETS=true
+images:
+  - name: ghcr.io/klebers022/hookline-api
+    newTag: sha-386a4a0878a62bcaac0d688f7f81ecb9fc89ab1d
+  - name: ghcr.io/klebers022/hookline-worker
+    newTag: sha-386a4a0878a62bcaac0d688f7f81ecb9fc89ab1d
+  - name: ghcr.io/klebers022/hookline-web
+    newTag: sha-386a4a0878a62bcaac0d688f7f81ecb9fc89ab1d
+  - name: ghcr.io/klebers022/hookline-test-receiver
+    newTag: sha-386a4a0878a62bcaac0d688f7f81ecb9fc89ab1d

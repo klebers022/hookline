@@ -1,0 +1,78 @@
+# The counter. Readiness keeps it out of the Service until it reaches the
+# database; liveness restarts it if it stops answering.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector:
+    app.kubernetes.io/name: api
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+    spec:
+      # The app waits up to 30 s for requests in flight, after the 5 s pause.
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: api
+          image: ghcr.io/klebers022/hookline-api
+          envFrom:
+            - configMapRef: { name: hookline-config }
+          # The passwords come first: $(NAME) only sees variables above it.
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: hookline-secrets, key: POSTGRES_PASSWORD }
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: hookline-secrets, key: RABBITMQ_PASSWORD }
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef: { name: hookline-secrets, key: ENCRYPTION_KEY }
+            - name: DATABASE_URL
+              value: postgres://hookline:$(POSTGRES_PASSWORD)@postgres:5432/hookline
+            - name: RABBITMQ_URL
+              value: amqp://hookline:$(RABBITMQ_PASSWORD)@rabbitmq:5672
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: '3000'
+            - name: OTEL_SERVICE_NAME
+              value: hookline-api
+          ports:
+            - name: http
+              containerPort: 3000
+            - name: metrics
+              containerPort: 9464
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          # Removing a pod from the Service takes a moment to reach Traefik;
+          # this pause keeps it serving until then, before SIGTERM.
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 384Mi }

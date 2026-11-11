@@ -1,0 +1,55 @@
+# The postman: takes deliveries off the queue and calls the endpoints. The
+# image's default command runs it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deliver
+  annotations:
+    argocd.argoproj.io/sync-wave: '2'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: deliver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: deliver
+    spec:
+      # Up to 30 s to finish the work in progress after SIGTERM.
+      terminationGracePeriodSeconds: 35
+      containers:
+        - name: deliver
+          image: ghcr.io/klebers022/hookline-worker
+          envFrom:
+            - configMapRef: { name: hookline-config }
+          # The passwords come first: $(NAME) only sees variables above it.
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: hookline-secrets, key: POSTGRES_PASSWORD }
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: hookline-secrets, key: RABBITMQ_PASSWORD }
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef: { name: hookline-secrets, key: ENCRYPTION_KEY }
+            - name: DATABASE_URL
+              value: postgres://hookline:$(POSTGRES_PASSWORD)@postgres:5432/hookline
+            - name: RABBITMQ_URL
+              value: amqp://hookline:$(RABBITMQ_PASSWORD)@rabbitmq:5672
+            - name: OTEL_SERVICE_NAME
+              value: hookline-deliver
+          ports:
+            - name: metrics
+              containerPort: 9464
+          readinessProbe:
+            httpGet: { path: /readyz, port: metrics }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 384Mi }

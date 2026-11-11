@@ -1,0 +1,13 @@
+# The local cluster (pnpm k8s:up): the same k3s as the VPS in phase 7,
+# running inside Docker. Traefik comes with k3s; its load balancer is
+# published on 127.0.0.1:8088, next to the compose stack's 8080.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: hookline
+servers: 1
+agents: 1
+image: rancher/k3s:v1.35.5-k3s1
+ports:
+  - port: 127.0.0.1:8088:80
+    nodeFilters: [loadbalancer]

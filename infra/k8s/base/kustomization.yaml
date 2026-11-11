@@ -1,0 +1,27 @@
+# What runs the same everywhere. Overlays add what differs: the test
+# receiver, which images to run and the retry schedule.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: hookline
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: hookline
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - rabbitmq.yaml
+  - migrate.yaml
+  - api.yaml
+  - relay.yaml
+  - deliver.yaml
+  - web.yaml
+# Settings shared by every Hookline process. The name gets a hash of the
+# content, so changing a value rolls the pods that read it.
+configMapGenerator:
+  - name: hookline-config
+    literals:
+      - RETRY_DELAYS=1m,5m,30m,2h,6h
+      - ALLOW_PRIVATE_TARGETS=false
+      # Every process serves /metrics, /healthz and /readyz on this port.
+      - METRICS_HOST=0.0.0.0
+      - METRICS_PORT=9464
