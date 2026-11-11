@@ -3,7 +3,11 @@ import { useApi } from '../auth';
 import type { Page } from './types';
 
 // A cursor-paginated list: each page asks for the rows after the last one.
-export function usePagedList<T>(key: unknown[], path: string) {
+export function usePagedList<T>(
+  key: unknown[],
+  path: string,
+  refetchInterval: number | false = false,
+) {
   const api = useApi();
   const query = useInfiniteQuery({
     queryKey: key,
@@ -15,6 +19,7 @@ export function usePagedList<T>(key: unknown[], path: string) {
     },
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.next_cursor,
+    refetchInterval,
   });
   const rows = query.data?.pages.flatMap((page) => page.data) ?? [];
   return { ...query, rows };

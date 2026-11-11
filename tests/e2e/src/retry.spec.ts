@@ -43,14 +43,16 @@ test('diagnoses a failed delivery and retries it', async ({ page }) => {
   await expect(attempts.first()).toContainText('500');
   expect(await attempts.count()).toBeGreaterThanOrEqual(2);
 
-  // Fix the endpoint: the receiver answers 200 and the endpoint is enabled
-  // again from the dashboard.
+  // Fix the endpoint: the receiver answers 200 and the endpoint is switched
+  // on again from the dashboard.
   await configureReceiver({ status: 200 });
   await page.getByRole('link', { name: 'Endpoints' }).click();
   const row = page.getByRole('row').filter({ hasText: type });
   await expect(row).toContainText(RECEIVER_IN_NETWORK);
-  await row.getByRole('button', { name: 'Enable' }).click();
-  await expect(row).toContainText('active');
+  const active = row.getByRole('switch', { name: 'Active' });
+  await expect(active).toHaveAttribute('aria-checked', 'false');
+  await active.click();
+  await expect(active).toHaveAttribute('aria-checked', 'true');
 
   // Retry, and watch the delivery succeed without reloading the page.
   await page.getByRole('link', { name: 'Failed' }).click();
