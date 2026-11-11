@@ -49,6 +49,10 @@ jobs:
           tags: hookline-${{ matrix.target }}:scan
           cache-from: type=gha,scope=${{ matrix.target }}
           cache-to: type=gha,scope=${{ matrix.target }},mode=max
+          # The final stage runs `apk upgrade`. A cached copy of that layer
+          # keeps the packages of the day it was built, so new fixes in the
+          # base image never arrive. Rebuilding only that stage is cheap.
+          no-cache-filters: ${{ matrix.target }}
 
       # Fails on a critical or high vulnerability that has a fix available.
       - name: Scan
@@ -92,3 +96,4 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.target }}
+          no-cache-filters: ${{ matrix.target }}
