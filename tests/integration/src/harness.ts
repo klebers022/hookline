@@ -12,6 +12,7 @@ import { RabbitMQContainer } from '@testcontainers/rabbitmq';
 import { randomBytes } from 'node:crypto';
 import { pino } from 'pino';
 import { expect, vi } from 'vitest';
+import { endPool } from './end-pool.js';
 
 const encryptionKey = randomBytes(32);
 const logger = pino({ level: 'silent' });
@@ -130,7 +131,7 @@ export async function startHarness(
     await receiver.stop();
     await broker.close();
     await app.close();
-    await pool.end();
+    await endPool(pool);
     await Promise.all([postgres.stop(), rabbit.stop()]);
   }
 

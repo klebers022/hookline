@@ -5,6 +5,7 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { endPool } from './end-pool.js';
 
 type Status = 'pending' | 'retrying' | 'succeeded' | 'dead';
 
@@ -21,7 +22,9 @@ describe('retention', () => {
   });
 
   afterAll(async () => {
-    await pool?.end();
+    if (pool) {
+      await endPool(pool);
+    }
     await container?.stop();
   });
 
