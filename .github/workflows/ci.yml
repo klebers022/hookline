@@ -58,3 +58,38 @@ jobs:
         run: docker compose --profile app logs
       - if: always()
         run: docker compose --profile app down --volumes
+
+  # The same stack in Kubernetes: a k3d cluster on the runner, with the
+  # images built from this commit imported into it (they are not on GHCR
+  # yet), and the smoke test against it.
+  k8s:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      # Every manifest of every overlay against the Kubernetes schemas.
+      - name: Validate the manifests
+        run: |
+          for overlay in local ci; do
+            kubectl kustomize "infra/k8s/overlays/$overlay" |
+              docker run --rm -i ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c -strict -summary -
+          done
+      - name: Install k3d
+        run: |
+          curl -fsSL -o k3d https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-amd64
+          sudo install k3d /usr/local/bin/k3d
+          k3d version
+      - run: node scripts/k8s.mjs images
+      - run: node scripts/k8s.mjs up ci
+      - run: node scripts/smoke.mjs --k8s
+      - if: failure()
+        run: |
+          kubectl --namespace hookline get all
+          kubectl --namespace hookline get events --sort-by=.lastTimestamp
+          for pod in $(kubectl --namespace hookline get pods --output name); do
+            echo "::group::$pod"
+            kubectl --namespace hookline logs "$pod" --all-containers --tail=200 || true
+            echo "::endgroup::"
+          done

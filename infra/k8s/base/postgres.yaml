@@ -1,0 +1,70 @@
+# The book of records. One pod with its own volume: a StatefulSet keeps the
+# name postgres-0 and the same volume across restarts. The headless Service
+# points the name "postgres" straight at the pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - name: POSTGRES_USER
+              value: hookline
+            - name: POSTGRES_DB
+              value: hookline
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: hookline-secrets, key: POSTGRES_PASSWORD }
+            # A folder inside the volume, not its root.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, hookline, -d, hookline]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, hookline, -d, hookline]
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi
