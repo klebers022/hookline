@@ -87,7 +87,7 @@ Delivery is at least once, so an endpoint can receive the same event more than o
 
 ### Endpoint isolation
 
-- **Circuit breaker:** after 5 failures in a row, Hookline stops calling the endpoint for 5 minutes. Deliveries wait without spending attempts. The endpoint's `consecutive_failures` and `circuit_open_until` show its state. A success, activating the endpoint again, or changing its URL closes the circuit.
+- **Circuit breaker:** after 5 failures in a row, Hookline stops calling the endpoint for 5 minutes (`CIRCUIT_OPEN_SECONDS`). Deliveries wait without spending attempts. The endpoint's `consecutive_failures` and `circuit_open_until` show its state. A success, activating the endpoint again, or changing its URL closes the circuit.
 - **Rate limit:** each worker sends at most 50 webhooks per second to each endpoint, set with `ENDPOINT_RATE_LIMIT_PER_SECOND`. Deliveries over the limit wait one second, without spending attempts.
 
 ## Publishing safely

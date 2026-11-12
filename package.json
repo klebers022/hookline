@@ -38,6 +38,7 @@
     "k8s:bump": "node scripts/k8s.mjs bump",
     "load:ingest": "node scripts/load.mjs ingest",
     "load:e2e": "node scripts/load.mjs end-to-end",
+    "chaos": "node scripts/chaos.mjs",
     "db:migrate": "pnpm --filter @hookline/api migrate",
     "project:create": "pnpm --filter @hookline/api project:create",
     "db:retention": "pnpm --filter @hookline/api retention",

@@ -61,12 +61,30 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: test-receiver
+  annotations:
+    # Traefik ranks rules by their length, and Path(`/stats`) is shorter
+    # than the dashboard's PathPrefix(`/`): without this, the dashboard
+    # would answer.
+    traefik.ingress.kubernetes.io/router.priority: '100'
 spec:
   ingressClassName: traefik
   rules:
     - http:
         paths:
+          # /control and /control/<destination>.
           - path: /control
+            pathType: Prefix
+            backend:
+              service:
+                name: test-receiver
+                port: { name: http }
+          - path: /stats
+            pathType: Exact
+            backend:
+              service:
+                name: test-receiver
+                port: { name: http }
+          - path: /reset
             pathType: Exact
             backend:
               service:

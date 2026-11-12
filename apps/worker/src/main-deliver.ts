@@ -12,6 +12,14 @@ import { pino } from 'pino';
 import { startDeliveryWorker } from './deliver.js';
 
 const logger = pino({ name: 'delivery-worker' });
+
+function positiveSeconds(name: string): number {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number of seconds`);
+  }
+  return value;
+}
 const pool = createPool(requireEnv('DATABASE_URL'));
 const broker = connectBroker(requireEnv('RABBITMQ_URL'));
 const registry = createRegistry('deliver');
@@ -26,6 +34,13 @@ const worker = startDeliveryWorker({
     endpointRateLimitPerSecond: Number(
       process.env.ENDPOINT_RATE_LIMIT_PER_SECOND,
     ),
+  }),
+  // How long a failing endpoint is left alone; the chaos test shortens it.
+  ...(process.env.CIRCUIT_OPEN_SECONDS && {
+    circuitBreaker: {
+      failureThreshold: 5,
+      openMs: positiveSeconds('CIRCUIT_OPEN_SECONDS') * 1000,
+    },
   }),
   logger,
   registry,
