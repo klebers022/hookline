@@ -30,9 +30,19 @@ spec:
       labels:
         app.kubernetes.io/name: rabbitmq
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: rabbitmq
           image: rabbitmq:4.4-management-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           env:
             - name: RABBITMQ_DEFAULT_USER
               value: hookline
@@ -66,8 +76,14 @@ spec:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { memory: 1Gi }
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: data
               mountPath: /var/lib/rabbitmq
+      # The root filesystem is read-only; these are the places it writes.
+      volumes:
+        - name: tmp
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data

@@ -42,10 +42,25 @@ function runIn(service, ...command) {
 }
 
 // Runs a command inside the service's running container.
-function execIn(service, ...command) {
-  return K8S
-    ? kubectl('exec', `deploy/${service}`, '--', ...command)
-    : compose('exec', '-T', service, ...command);
+// Runs a command inside each running container of the service: the API
+// has two pods in the cluster.
+function execInEach(service, ...command) {
+  if (!K8S) {
+    return [compose('exec', '-T', service, ...command)];
+  }
+  const pods = kubectl(
+    'get',
+    'pods',
+    '--selector',
+    `app.kubernetes.io/name=${service}`,
+    '--field-selector',
+    'status.phase=Running',
+    '--output',
+    'name',
+  )
+    .split(/\s+/)
+    .filter(Boolean);
+  return pods.map((pod) => kubectl('exec', pod, '--', ...command));
 }
 
 // Stops the delivery worker and returns once it has exited. In the cluster,
@@ -153,23 +168,77 @@ async function delivery(eventId) {
 
 // Reads a process's metrics from inside its container: the ops port is not
 // published outside the compose network or the cluster.
+// Adds up the metric across the service's containers.
 function metric(service, name, labels) {
-  const text = execIn(
+  const texts = execInEach(
     service,
     'node',
     '-e',
     "fetch('http://127.0.0.1:9464/metrics').then((r) => r.text()).then((t) => process.stdout.write(t))",
   );
-  const line = text
-    .split('\n')
-    .find(
-      (l) =>
-        l.startsWith(`${name}{`) &&
-        Object.entries(labels).every(([key, value]) =>
-          l.includes(`${key}="${value}"`),
-        ),
+  let total = 0;
+  for (const text of texts) {
+    const line = text
+      .split('\n')
+      .find(
+        (l) =>
+          l.startsWith(`${name}{`) &&
+          Object.entries(labels).every(([key, value]) =>
+            l.includes(`${key}="${value}"`),
+          ),
+      );
+    total += line ? Number(line.split(' ').at(-1)) : 0;
+  }
+  return total;
+}
+
+// Asks Postgres from a throwaway pod with the given name label whether it
+// accepts connections. The pod follows the restricted standard, like every
+// pod in the namespace must.
+function postgresReachableAs(name) {
+  const pod = `netcheck-${name}-${Date.now()}`;
+  const overrides = {
+    spec: {
+      securityContext: {
+        runAsNonRoot: true,
+        runAsUser: 70,
+        seccompProfile: { type: 'RuntimeDefault' },
+      },
+      containers: [
+        {
+          name: pod,
+          image: 'postgres:17-alpine',
+          // The policies reach a new pod a moment after it starts, so
+          // it asks for 15 seconds before giving up.
+          command: [
+            'sh',
+            '-c',
+            'for i in $(seq 15); do pg_isready --host postgres --timeout 2 && exit 0; sleep 1; done; exit 1',
+          ],
+          securityContext: {
+            allowPrivilegeEscalation: false,
+            capabilities: { drop: ['ALL'] },
+          },
+        },
+      ],
+    },
+  };
+  try {
+    kubectl(
+      'run',
+      pod,
+      '--rm',
+      '--attach',
+      '--quiet',
+      '--restart=Never',
+      '--image=postgres:17-alpine',
+      `--labels=app.kubernetes.io/name=${name}`,
+      `--overrides=${JSON.stringify(overrides)}`,
     );
-  return line ? Number(line.split(' ').at(-1)) : 0;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const succeededBefore = metric('deliver', 'hookline_delivery_attempts_total', {
@@ -199,6 +268,16 @@ if (metric('api', 'hookline_events_accepted_total', {}) < 1) {
   throw new Error('The API did not count the accepted event');
 }
 step('The metrics counted the event and the succeeded attempt');
+
+if (K8S) {
+  if (!postgresReachableAs('api')) {
+    throw new Error('A pod labeled as the API could not reach Postgres');
+  }
+  if (postgresReachableAs('stranger')) {
+    throw new Error('A pod with no business there reached Postgres');
+  }
+  step('The network policies let the API reach Postgres, and no one else');
+}
 
 // The receiver records a webhook as it arrives and answers 5 seconds
 // later, so the worker is stopped while the request is in flight.

@@ -1,0 +1,62 @@
+# The daily clean-up (ADR 10): published outbox rows after 7 days, finished
+# events after 30. Forbid keeps a slow run from overlapping the next.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retention
+spec:
+  schedule: '0 3 * * *'
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: retention
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          # k3s lets a new pod through the network policies a moment after it
+          # starts; a pod that connects at once is refused. This waits for that.
+          initContainers:
+            - name: wait-for-postgres
+              image: postgres:17-alpine
+              command:
+                - sh
+                - -c
+                - until pg_isready --host postgres --timeout 2; do sleep 1; done
+              securityContext:
+                runAsUser: 70
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { memory: 64Mi }
+          containers:
+            - name: retention
+              image: ghcr.io/klebers022/hookline-api
+              command: [node, dist/scripts/retention.js]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              env:
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      { name: hookline-secrets, key: POSTGRES_PASSWORD }
+                - name: DATABASE_URL
+                  value: postgres://hookline:$(POSTGRES_PASSWORD)@postgres:5432/hookline
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { memory: 256Mi }

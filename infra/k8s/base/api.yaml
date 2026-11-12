@@ -19,7 +19,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: '2'
 spec:
-  replicas: 1
+  # Two, so a node drain or a rollout always leaves one answering.
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: api
@@ -28,11 +29,21 @@ spec:
       labels:
         app.kubernetes.io/name: api
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       # The app waits up to 30 s for requests in flight, after the 5 s pause.
       terminationGracePeriodSeconds: 40
       containers:
         - name: api
           image: ghcr.io/klebers022/hookline-api
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           envFrom:
             - configMapRef: { name: hookline-config }
           # The passwords come first: $(NAME) only sees variables above it.
@@ -76,3 +87,21 @@ spec:
           resources:
             requests: { cpu: 100m, memory: 128Mi }
             limits: { memory: 384Mi }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      # The root filesystem is read-only; these are the places it writes.
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+# A voluntary disruption, such as draining a node, never takes both pods.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api

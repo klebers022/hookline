@@ -1,4 +1,9 @@
+# The restricted Pod Security standard: the API server refuses any pod that
+# could run as root, escalate privileges or keep Linux capabilities.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: hookline
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

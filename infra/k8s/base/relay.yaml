@@ -16,11 +16,21 @@ spec:
       labels:
         app.kubernetes.io/name: relay
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       # Up to 30 s to finish the work in progress after SIGTERM.
       terminationGracePeriodSeconds: 35
       containers:
         - name: relay
           image: ghcr.io/klebers022/hookline-worker
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           command:
             - node
             - --enable-source-maps
@@ -59,3 +69,10 @@ spec:
           resources:
             requests: { cpu: 100m, memory: 128Mi }
             limits: { memory: 384Mi }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      # The root filesystem is read-only; these are the places it writes.
+      volumes:
+        - name: tmp
+          emptyDir: {}
