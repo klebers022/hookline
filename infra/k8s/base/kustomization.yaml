@@ -27,3 +27,6 @@ configMapGenerator:
       # Every process serves /metrics, /healthz and /readyz on this port.
       - METRICS_HOST=0.0.0.0
       - METRICS_PORT=9464
+      # Traces go to Tempo (pnpm k8s:obs). While it is not running, the spans
+      # are dropped and the app works the same.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.observability:4318

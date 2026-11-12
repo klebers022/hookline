@@ -54,6 +54,9 @@ spec:
               containerPort: 5672
             - name: management
               containerPort: 15672
+            # The rabbitmq_prometheus plugin, which Prometheus scrapes.
+            - name: prometheus
+              containerPort: 15692
           # Booting takes a while; the other probes wait for this one.
           startupProbe:
             exec:

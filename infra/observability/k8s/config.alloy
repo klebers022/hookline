@@ -1,0 +1,70 @@
+// Reads the logs of Hookline's pods through the Kubernetes API and sends them
+// to Loki. The pipeline after the source is the same as in compose
+// (alloy/config.alloy); only how the pods are found differs.
+
+discovery.kubernetes "pods" {
+  role = "pod"
+  namespaces {
+    names = ["hookline"]
+  }
+}
+
+// Discovery yields one target per container port. One per container is
+// kept: the metrics port of the app processes, the http port of the test
+// receiver, and the jobs, which have no port. Each is labelled by service.
+discovery.relabel "hookline" {
+  targets = discovery.kubernetes.pods.targets
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name", "__meta_kubernetes_pod_container_port_name"]
+    regex         = "(api|relay|deliver);metrics|test-receiver;http|(migrate|retention);"
+    action        = "keep"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label  = "pod"
+  }
+}
+
+loki.source.kubernetes "hookline" {
+  targets    = discovery.relabel.hookline.output
+  forward_to = [loki.process.pino.receiver]
+}
+
+loki.process "pino" {
+  // Pino writes JSON; lines that are not JSON pass through unchanged.
+  stage.json {
+    expressions = {
+      level    = "level",
+      trace_id = "trace_id",
+      span_id  = "span_id",
+    }
+  }
+
+  // Pino numbers its levels; Grafana colours lines by name.
+  stage.template {
+    source   = "level"
+    template = "{{ if eq .Value \"10\" }}trace{{ else if eq .Value \"20\" }}debug{{ else if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else if .Value }}{{ .Value }}{{ end }}"
+  }
+
+  stage.labels {
+    values = { level = "" }
+  }
+
+  // One value per trace: kept beside the line, not in the index.
+  stage.structured_metadata {
+    values = { trace_id = "", span_id = "" }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

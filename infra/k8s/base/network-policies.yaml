@@ -88,3 +88,27 @@ spec:
                 values: [relay, deliver]
       ports:
         - port: 5672
+---
+# Prometheus, in the observability namespace, reads the metrics ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: metrics
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [api, relay, deliver, rabbitmq]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - port: 9464
+        - port: 15692

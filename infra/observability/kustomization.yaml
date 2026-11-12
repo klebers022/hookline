@@ -1,0 +1,55 @@
+# The observability stack in the Kubernetes cluster (pnpm k8s:obs). It lives
+# here, beside the compose configuration, so it can reuse the same alert
+# rules, Tempo and Loki settings, Grafana data sources and dashboard: Kustomize
+# only reads files inside its own folder. What differs in Kubernetes is in
+# k8s/: how Prometheus and Alloy find the pods.
+#
+# No namespace here: each resource names its own, because the Roles that let
+# Prometheus and Alloy see the pods live in the hookline namespace.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: hookline-observability
+resources:
+  - k8s/namespace.yaml
+  - k8s/rbac.yaml
+  - k8s/prometheus.yaml
+  - k8s/tempo.yaml
+  - k8s/loki.yaml
+  - k8s/alloy.yaml
+  - k8s/grafana.yaml
+  - k8s/network-policies.yaml
+# Each generated ConfigMap names its namespace, which nothing above sets.
+configMapGenerator:
+  - name: prometheus-config
+    namespace: observability
+    files:
+      - prometheus.yml=k8s/prometheus.yml
+      - prometheus/alerts.yml
+  - name: tempo-config
+    namespace: observability
+    files:
+      - tempo/tempo.yml
+  - name: loki-config
+    namespace: observability
+    files:
+      - loki/loki.yml
+  - name: alloy-config
+    namespace: observability
+    files:
+      - k8s/config.alloy
+  - name: grafana-datasources
+    namespace: observability
+    files:
+      - grafana/provisioning/datasources/prometheus.yml
+      - grafana/provisioning/datasources/tempo.yml
+      - grafana/provisioning/datasources/loki.yml
+  - name: grafana-dashboard-providers
+    namespace: observability
+    files:
+      - grafana/provisioning/dashboards/hookline.yml
+  - name: grafana-dashboards
+    namespace: observability
+    files:
+      - grafana/dashboards/hookline-overview.json
