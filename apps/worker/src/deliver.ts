@@ -34,6 +34,9 @@ import { TokenBuckets } from './rate-limiter.js';
 import { sendWebhook, type SendResult } from './sender.js';
 
 const ERROR_BACKOFF_MS = 1_000;
+// The error code of a delivery whose schedule ended while its endpoint's
+// circuit was open, recorded in place of an attempt.
+export const DEADLINE_EXCEEDED = 'DEADLINE_EXCEEDED';
 
 export interface CircuitBreakerOptions {
   failureThreshold: number;
@@ -136,6 +139,8 @@ export function startDeliveryWorker({
   const metrics = createDeliveryMetrics(registry, () => inFlight.size);
   const targetPolicy = { allowPrivateTargets };
   const waitDelays = [...retryDelays, THROTTLE_DELAY];
+  // From the event to the last scheduled attempt: 8 h 36 min by default.
+  const scheduleMs = retryDelays.reduce((total, delay) => total + delay.ms, 0);
   const rateLimiter = new TokenBuckets(endpointRateLimitPerSecond);
   const dispatcher = new Agent(
     allowPrivateTargets
@@ -283,6 +288,51 @@ export function startDeliveryWorker({
     });
   }
 
+  // Ends a delivery whose schedule ran out while its endpoint's circuit was
+  // open. The endpoint is not called; the attempt is recorded with the
+  // reason, so the history says why the delivery stopped.
+  async function expireDelivery(
+    delivery: DeliveryRow,
+    attempt: number,
+  ): Promise<void> {
+    const recorded = await withTransaction(pool, async (client) => {
+      const { rowCount } = await client.query(
+        `INSERT INTO delivery_attempts
+           (id, delivery_id, attempt_number, started_at, duration_ms,
+            response_status, error_code, response_snippet)
+         VALUES ($1, $2, $3, now(), 0, NULL, $4, NULL)
+         ON CONFLICT (delivery_id, attempt_number) DO NOTHING`,
+        [newId(), delivery.id, attempt, DEADLINE_EXCEEDED],
+      );
+      if (!rowCount) {
+        return false;
+      }
+      await client.query(
+        `UPDATE deliveries
+         SET status = 'dead', attempt_count = $2, next_attempt_at = NULL
+         WHERE id = $1`,
+        [delivery.id, attempt],
+      );
+      await enqueue(client, delivery.id, DELIVERIES_DEAD_ROUTING_KEY, attempt);
+      return true;
+    });
+    if (!recorded) {
+      metrics.duplicates.inc();
+      setSpanAttributes({ 'hookline.outcome': 'duplicate' });
+      return;
+    }
+    metrics.attempts.inc({ outcome: 'dead' });
+    metrics.attemptErrors.inc({ code: DEADLINE_EXCEEDED });
+    setSpanAttributes({
+      'hookline.outcome': 'dead',
+      'error.type': DEADLINE_EXCEEDED,
+    });
+    logger.warn(
+      { deliveryId: delivery.id, attempt, errorCode: DEADLINE_EXCEEDED },
+      'Delivery given up: its schedule ended while the circuit was open',
+    );
+  }
+
   // Returns a delay when the delivery must wait without spending an attempt.
   async function processDelivery({
     delivery_id: id,
@@ -312,6 +362,18 @@ export function startDeliveryWorker({
     // A failing endpoint gets a break instead of more doomed attempts, and
     // one over its rate limit waits, so neither holds back other endpoints.
     if (delivery.circuit_wait_ms !== null) {
+      // Waiting does not spend attempts, but the schedule's time runs on:
+      // once it is over, the delivery is given up on, as it would have been
+      // after its last attempt. Otherwise an endpoint that never comes back
+      // would hold its deliveries for weeks, one doomed attempt per break.
+      // A manual retry, past the schedule, has no deadline.
+      if (
+        attempt <= retryDelays.length + 1 &&
+        Date.now() >= delivery.created_at.getTime() + scheduleMs
+      ) {
+        await expireDelivery(delivery, attempt);
+        return undefined;
+      }
       metrics.deferrals.inc({ reason: 'circuit_open' });
       setSpanAttributes({ 'hookline.outcome': 'deferred:circuit_open' });
       return pickDelay(retryDelays, delivery.circuit_wait_ms);

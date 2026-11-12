@@ -79,6 +79,7 @@ Uma entrega tem até 6 tentativas: uma imediata e outras depois de 1 minuto, 5 m
 - **`410 Gone`:** desativa o endpoint e encerra a entrega.
 - **Endpoint desativado ou removido:** encerra a entrega quando chega a hora da próxima tentativa.
 - **Entrega esgotada:** recebe o status `dead` e uma mensagem em `deliveries.dlq`.
+- **Calendário vencido com o circuito aberto:** uma entrega esperando um circuito aberto (abaixo) termina mesmo assim quando o calendário acaba, cerca de 8h36 depois do evento, com uma última tentativa registrada como `DEADLINE_EXCEEDED` e sem chamar o endpoint.
 - **Reenvio manual:** `POST /v1/deliveries/:id/retry` agenda mais uma tentativa para uma entrega `dead` cujo endpoint esteja ativo.
 
 A entrega é "pelo menos uma vez", então um endpoint pode receber o mesmo evento mais de uma vez. Use o header `webhook-id`, que não muda entre as tentativas, para descartar repetições.
@@ -87,7 +88,7 @@ A entrega é "pelo menos uma vez", então um endpoint pode receber o mesmo event
 
 ### Isolamento entre endpoints
 
-- **Circuit breaker:** depois de 5 falhas seguidas, o Hookline deixa de chamar o endpoint por 5 minutos. As entregas esperam sem gastar tentativas. Os campos `consecutive_failures` e `circuit_open_until` do endpoint mostram o estado. Um sucesso, a reativação do endpoint ou a troca da URL fecham o circuito.
+- **Circuit breaker:** depois de 5 falhas seguidas, o Hookline deixa de chamar o endpoint por 5 minutos. As entregas esperam sem gastar tentativas, até o fim do calendário. Os campos `consecutive_failures` e `circuit_open_until` do endpoint mostram o estado. Um sucesso, a reativação do endpoint ou a troca da URL fecham o circuito.
 - **Limite de envios:** cada worker envia no máximo 50 webhooks por segundo a cada endpoint, valor definido em `ENDPOINT_RATE_LIMIT_PER_SECOND`. As entregas acima do limite esperam um segundo, sem gastar tentativas.
 
 ## Publicação segura
