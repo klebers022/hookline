@@ -9,9 +9,10 @@ configMapGenerator:
   - name: hookline-config
     behavior: merge
     literals:
-      # Six tries over about two minutes, longer than a destination that
-      # comes back after a while is away.
-      - RETRY_DELAYS=5s,10s,20s,30s,60s
+      # Six tries over almost 5 minutes. A delivery is given up on when the
+      # schedule ends, even while the circuit is open, so it must outlast
+      # the 2 minutes the outage destination is away.
+      - RETRY_DELAYS=5s,10s,30s,60s,180s
       # A failing endpoint is tried again after 15 s, not 5 minutes.
       - CIRCUIT_OPEN_SECONDS=15
       # High enough that the test measures the failures, not the limits.

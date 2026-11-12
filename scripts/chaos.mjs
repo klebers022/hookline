@@ -48,8 +48,9 @@ const DESTINATIONS = {
     behavior: { status: 503 },
     types: ['chaos.event', 'chaos.rare'],
   },
-  // Always 500, and only gets the rare type: every delivery runs out of
-  // tries and goes to the dead letter queue.
+  // Always 500, and only gets the rare type: every delivery is given up
+  // on and goes to the dead letter queue, after its tries or, with the
+  // circuit open, when its schedule ends.
   broken: { behavior: { status: 500 }, types: ['chaos.rare'] },
 };
 
@@ -389,6 +390,12 @@ const [[unpublished]] = sql(`
   JOIN deliveries d ON d.id = o.delivery_id
   JOIN events e ON e.id = d.event_id
   WHERE e.project_id = '${projectId}' AND o.published_at IS NULL`);
+// Deliveries given up on because their schedule ended with the circuit open.
+const [[expired]] = sql(`
+  SELECT count(*) FROM delivery_attempts a
+  JOIN deliveries d ON d.id = a.delivery_id
+  JOIN events e ON e.id = d.event_id
+  WHERE e.project_id = '${projectId}' AND a.error_code = 'DEADLINE_EXCEEDED'`);
 const received = await request('/stats');
 const deadAdded = deadLetters() - deadBefore;
 
@@ -450,9 +457,9 @@ check(
   `${outage?.succeeded} succeeded, ${received.outage?.unique} received`,
 );
 check(
-  'Every delivery to the broken destination is dead, after every try',
-  broken?.dead === Number(rare) && broken?.attempts === Number(rare) * 6,
-  `${broken?.dead} dead, ${broken?.attempts} attempts`,
+  'Every delivery to the broken destination is dead',
+  broken?.dead === Number(rare),
+  `${broken?.dead} dead, ${expired} of them when the schedule ended with the circuit open`,
 );
 check(
   'The dead letter queue got them',
