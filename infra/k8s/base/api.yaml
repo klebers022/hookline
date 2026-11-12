@@ -75,9 +75,13 @@ spec:
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             periodSeconds: 5
+          # A busy process answers slowly; only one that stops answering for
+          # 30 s is restarted. The 1 s default restarted the API in the middle
+          # of the chaos test's load, which made the overload worse.
           livenessProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 3
           # Removing a pod from the Service takes a moment to reach Traefik;
           # this pause keeps it serving until then, before SIGTERM.
