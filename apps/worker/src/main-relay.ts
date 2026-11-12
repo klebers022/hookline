@@ -10,7 +10,9 @@ import { pino } from 'pino';
 import { startRelay } from './relay.js';
 
 const logger = pino({ name: 'relay' });
-const pool = createPool(requireEnv('DATABASE_URL'));
+const pool = createPool(requireEnv('DATABASE_URL'), (error) =>
+  logger.warn({ err: error }, 'Database connection lost'),
+);
 const broker = connectBroker(requireEnv('RABBITMQ_URL'));
 
 const registry = createRegistry('relay');

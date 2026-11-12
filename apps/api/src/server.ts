@@ -8,7 +8,11 @@ import {
 } from '@hookline/shared';
 import { buildApp } from './app.js';
 
-const pool = createPool(requireEnv('DATABASE_URL'));
+// A connection lost outside a request, such as on a database restart, is
+// logged; the pool opens a new one for the next request.
+const pool = createPool(requireEnv('DATABASE_URL'), (error) =>
+  app.log.warn({ err: error }, 'Database connection lost'),
+);
 const registry = createRegistry('api');
 const app = await buildApp({
   pool,

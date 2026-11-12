@@ -62,9 +62,11 @@ spec:
           readinessProbe:
             httpGet: { path: /readyz, port: metrics }
             periodSeconds: 5
+          # Slow is not dead: see the API's probe.
           livenessProbe:
             httpGet: { path: /healthz, port: metrics }
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 3
           resources:
             requests: { cpu: 100m, memory: 128Mi }
