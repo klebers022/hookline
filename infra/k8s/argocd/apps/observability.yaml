@@ -1,0 +1,25 @@
+# Prometheus, Tempo, Loki, Alloy and Grafana. Its Roles live in the hookline
+# namespace, which is why it is a destination of the project too.
+# selfHeal undoes any change made by hand in the cluster; prune deletes what
+# was removed from Git.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability
+  namespace: argocd
+spec:
+  project: hookline
+  source:
+    repoURL: https://github.com/klebers022/hookline.git
+    targetRevision: main
+    path: infra/observability
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }

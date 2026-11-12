@@ -34,6 +34,8 @@
     "k8s:smoke": "node scripts/smoke.mjs --k8s",
     "k8s:obs": "node scripts/k8s.mjs obs",
     "k8s:obs-check": "node scripts/k8s.mjs obs-check",
+    "k8s:argocd": "node scripts/k8s.mjs argocd",
+    "k8s:bump": "node scripts/k8s.mjs bump",
     "load:ingest": "node scripts/load.mjs ingest",
     "load:e2e": "node scripts/load.mjs end-to-end",
     "db:migrate": "pnpm --filter @hookline/api migrate",

@@ -15,10 +15,10 @@ configMapGenerator:
       - ALLOW_PRIVATE_TARGETS=true
 images:
   - name: ghcr.io/klebers022/hookline-api
-    newTag: sha-386a4a0878a62bcaac0d688f7f81ecb9fc89ab1d
+    newTag: sha-523c87d00632e6872ace66138ad102278129756d
   - name: ghcr.io/klebers022/hookline-worker
-    newTag: sha-386a4a0878a62bcaac0d688f7f81ecb9fc89ab1d
+    newTag: sha-523c87d00632e6872ace66138ad102278129756d
   - name: ghcr.io/klebers022/hookline-web
-    newTag: sha-386a4a0878a62bcaac0d688f7f81ecb9fc89ab1d
+    newTag: sha-523c87d00632e6872ace66138ad102278129756d
   - name: ghcr.io/klebers022/hookline-test-receiver
-    newTag: sha-386a4a0878a62bcaac0d688f7f81ecb9fc89ab1d
+    newTag: sha-523c87d00632e6872ace66138ad102278129756d

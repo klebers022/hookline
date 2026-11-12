@@ -1,0 +1,36 @@
+# Argo CD itself (pnpm k8s:argocd): the official manifest, pinned to a
+# release, with three local changes below. Applied server-side, because its
+# CRDs are too big for the annotation a client-side apply keeps.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - namespace.yaml
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.6/manifests/install.yaml
+  - ingress.yaml
+patches:
+  # Traefik ends the connection; inside the cluster the server speaks plain
+  # HTTP. TLS comes with cert-manager in phase 7.
+  - patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: argocd-cmd-params-cm
+      data:
+        server.insecure: 'true'
+  # Local only: anyone who opens the page can look, without a login. Changes
+  # still come only from Git, and the admin password still works.
+  - patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: argocd-cm
+      data:
+        users.anonymous.enabled: 'true'
+  - patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: argocd-rbac-cm
+      data:
+        policy.default: role:readonly

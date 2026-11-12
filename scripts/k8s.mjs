@@ -8,7 +8,11 @@
 //   obs           applies the observability stack
 //   obs-check     checks that it sees the app: every scrape target up, the
 //                 alert rules loaded, traces in Tempo and logs in Loki
+//   argocd        installs Argo CD and the root application, which syncs
+//                 the stack from main from then on
+//   bump          pins the local overlay to the images of the latest main
 import { randomBytes } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -248,6 +252,75 @@ async function obsCheck() {
   console.log('Observability check passed');
 }
 
+function argocd() {
+  // The CRDs are too big for the annotation a client-side apply keeps.
+  run('kubectl', [
+    'apply',
+    '--server-side',
+    '--force-conflicts',
+    '--kustomize',
+    'infra/k8s/argocd/install',
+  ]);
+  waitForRollouts('argocd');
+  run('kubectl', ['apply', '--filename', 'infra/k8s/argocd/root.yaml']);
+  console.log(
+    'Argo CD is up: http://argocd.hookline.localhost:8088 (read-only without a login)',
+  );
+  console.log(
+    'The admin password is in the argocd-initial-admin-secret Secret, in the argocd namespace.',
+  );
+}
+
+const OVERLAY = 'infra/k8s/overlays/local/kustomization.yaml';
+const REGISTRY = 'ghcr.io';
+const OWNER = 'klebers022';
+
+// Asks GHCR, anonymously, whether an image has the tag: the images workflow
+// publishes sha-<commit> only after Trivy passed.
+async function published(image, tag) {
+  const repository = `${OWNER}/hookline-${image}`;
+  const { token } = await getJson(
+    `https://${REGISTRY}/token?scope=repository:${repository}:pull`,
+  );
+  const response = await fetch(
+    `https://${REGISTRY}/v2/${repository}/manifests/${tag}`,
+    {
+      method: 'HEAD',
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/vnd.oci.image.index.v1+json',
+      },
+    },
+  );
+  return response.ok;
+}
+
+// Moves the local overlay to the images of the latest commit on main. The
+// change goes through a pull request like any other, and Argo CD rolls it
+// out once it is merged; reverting that commit rolls it back.
+async function bump() {
+  run('git', ['fetch', '--quiet', 'origin', 'main']);
+  const sha = run('git', ['rev-parse', 'origin/main'], { quiet: true }).trim();
+  const tag = `sha-${sha}`;
+  for (const image of IMAGES) {
+    if (!(await published(image, tag))) {
+      throw new Error(
+        `hookline-${image}:${tag} is not on GHCR yet: wait for the Images workflow on main.`,
+      );
+    }
+  }
+  const before = readFileSync(OVERLAY, 'utf8');
+  const after = before.replace(/newTag: sha-[0-9a-f]{40}/g, `newTag: ${tag}`);
+  if (after === before) {
+    console.log(`Already on ${tag}`);
+    return;
+  }
+  writeFileSync(OVERLAY, after);
+  console.log(
+    `Pinned the local overlay to ${tag}. Commit it in a pull request.`,
+  );
+}
+
 const [command, ...args] = process.argv.slice(2);
 switch (command) {
   case 'up':
@@ -275,9 +348,15 @@ switch (command) {
   case 'obs-check':
     await obsCheck();
     break;
+  case 'argocd':
+    argocd();
+    break;
+  case 'bump':
+    await bump();
+    break;
   default:
     console.error(
-      'Usage: node scripts/k8s.mjs up [overlay] | down | images | project NAME | obs | obs-check',
+      'Usage: node scripts/k8s.mjs up [overlay] | down | images | project NAME | obs | obs-check | argocd | bump',
     );
     process.exit(1);
 }

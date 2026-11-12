@@ -146,6 +146,29 @@ A `hookline-web` é um nginx rodando com usuário sem privilégios na porta 8080
 
 Crie um projeto na stack em execução com `docker compose --profile app run --rm api node dist/scripts/create-project.js <nome>`. Ele mostra a API key do projeto uma única vez, e é ela que o painel pede; o banco guarda só o hash.
 
+## Rodando no Kubernetes
+
+A mesma stack roda num cluster Kubernetes local: o k3s, a distribuição que a VPS de produção vai usar, dentro do Docker pelo [k3d](https://k3d.io). Precisa do `k3d` e do `kubectl`.
+
+```sh
+pnpm k8s:up
+pnpm k8s:smoke
+pnpm k8s:obs
+pnpm k8s:obs-check
+pnpm k8s:argocd
+pnpm k8s:down
+```
+
+- `pnpm k8s:up` cria o cluster `hookline` e um Secret com senhas e uma chave de criptografia aleatórias, que nunca vão para o Git. Depois aplica o `infra/k8s/overlays/local`. O painel fica em <http://hookline.localhost:8088>, e por ele o `/v1` chega à API. A porta 8088 evita conflito com a stack do compose.
+- `pnpm k8s:project <nome>` cria um projeto e mostra a API key dele.
+- `pnpm k8s:smoke` roda o teste de fumaça contra o cluster. Ele apaga o pod do worker de entrega durante uma entrega lenta e confere que as NetworkPolicies deixam a API alcançar o Postgres e barram outros pods.
+- `pnpm k8s:obs` acrescenta Prometheus, Tempo, Loki, Alloy e Grafana, com os mesmos alertas e painel do compose, em <http://grafana.hookline.localhost:8088>. O `pnpm k8s:obs-check` confere que eles enxergam o app.
+- `pnpm k8s:argocd` instala o Argo CD, em <http://argocd.hookline.localhost:8088>, só para leitura sem login. A partir daí, o cluster sincroniza a partir da `main`, e uma mudança feita à mão é desfeita.
+
+Os manifestos ficam em `infra/k8s`: uma base Kustomize e os overlays `local` e `ci`. Todo pod tem probes de prontidão e de vida e limites de memória. Todo pod roda no padrão de Pod Security `restricted`: sem root, com o disco raiz só de leitura e sem _capabilities_. As NetworkPolicies negam o tráfego de entrada que não for liberado: só os processos do Hookline chegam ao Postgres, e só o relay e o worker de entrega chegam ao RabbitMQ. A retenção roda como um CronJob diário. O job `k8s` do CI faz tudo isso num cluster k3d, com as imagens construídas no pull request.
+
+Para colocar uma `main` mais nova no cluster, rode `pnpm k8s:bump`. Ele confere que as imagens do último commit da `main` foram publicadas e fixa o `overlays/local` nelas. Mescle essa mudança por pull request e o Argo CD faz o rollout; reverter o commit volta a versão. Veja as ADRs [12](docs/adr/0012-kubernetes-com-k3s.md) e [13](docs/adr/0013-gitops-com-argo-cd.md).
+
 ## Observabilidade
 
 ```sh

@@ -1,0 +1,20 @@
+# What the Hookline applications may do: deploy from this repository only,
+# into the hookline and observability namespaces only, and create no
+# cluster-wide object other than those namespaces.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hookline
+  namespace: argocd
+spec:
+  description: Hookline and its observability stack
+  sourceRepos:
+    - https://github.com/klebers022/hookline.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: hookline
+    - server: https://kubernetes.default.svc
+      namespace: observability
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace

@@ -1,0 +1,17 @@
+# The Argo CD interface, at http://argocd.hookline.localhost:8088.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: argocd.hookline.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port: { name: http }
