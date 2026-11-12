@@ -105,6 +105,33 @@ describe('endpoint isolation', () => {
       ).toHaveLength(1);
     });
 
+    it('gives up when the schedule ends while the circuit is open', async () => {
+      // A receiver of its own, which never answers anything but 500.
+      const broken = await startReceiver();
+      broken.configure({ status: 500 });
+      await endpointFor(broken.url, 'circuit.expired');
+
+      // Six deliveries need 36 attempts, but the circuit lets about one
+      // through per 3 s break: without a deadline they would take minutes.
+      const events = await Promise.all(
+        [1, 2, 3, 4, 5, 6].map(() => h.publish('circuit.expired')),
+      );
+      const histories = [];
+      for (const event of events) {
+        const { id } = await h.waitForDelivery(event.id, 'dead');
+        const { body } = await h.call('GET', `/v1/deliveries/${id}`);
+        histories.push(body.attempts as { error_code: string | null }[]);
+      }
+      const expired = histories.filter(
+        (attempts) => attempts.at(-1)?.error_code === 'DEADLINE_EXCEEDED',
+      );
+      expect(expired.length).toBeGreaterThan(0);
+      // Expiring calls nobody: the endpoint got fewer calls than attempts.
+      const attempts = histories.flat().length;
+      expect(broken.received).toHaveLength(attempts - expired.length);
+      await broken.stop();
+    });
+
     it('closes the circuit when the endpoint is activated again', async () => {
       const { id } = await endpointFor(h.receiver.url, 'circuit.reset');
       h.receiver.configure({ status: 500 });

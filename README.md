@@ -79,6 +79,7 @@ A delivery gets up to 6 attempts: one right away, then after 1 minute, 5 minutes
 - **`410 Gone`:** disables the endpoint and ends the delivery.
 - **Disabled or deleted endpoint:** ends the delivery when its next attempt comes up.
 - **Exhausted delivery:** gets the `dead` status and a message in `deliveries.dlq`.
+- **Schedule over while the circuit is open:** a delivery waiting on an open circuit (below) still ends when its schedule does, about 8 h 36 min after the event, with a last attempt recorded as `DEADLINE_EXCEEDED` and no call to the endpoint.
 - **Manual retry:** `POST /v1/deliveries/:id/retry` queues one more attempt for a `dead` delivery whose endpoint is active.
 
 Delivery is at least once, so an endpoint can receive the same event more than once. Use the `webhook-id` header, which stays the same across attempts, to discard repeats.
@@ -87,7 +88,7 @@ Delivery is at least once, so an endpoint can receive the same event more than o
 
 ### Endpoint isolation
 
-- **Circuit breaker:** after 5 failures in a row, Hookline stops calling the endpoint for 5 minutes. Deliveries wait without spending attempts. The endpoint's `consecutive_failures` and `circuit_open_until` show its state. A success, activating the endpoint again, or changing its URL closes the circuit.
+- **Circuit breaker:** after 5 failures in a row, Hookline stops calling the endpoint for 5 minutes. Deliveries wait without spending attempts, up to the end of their schedule. The endpoint's `consecutive_failures` and `circuit_open_until` show its state. A success, activating the endpoint again, or changing its URL closes the circuit.
 - **Rate limit:** each worker sends at most 50 webhooks per second to each endpoint, set with `ENDPOINT_RATE_LIMIT_PER_SECOND`. Deliveries over the limit wait one second, without spending attempts.
 
 ## Publishing safely
