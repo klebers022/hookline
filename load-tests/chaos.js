@@ -6,7 +6,9 @@
 //
 // It behaves like a careful client: a request that fails is sent again
 // with the same Idempotency-Key, so an event the API saved but could not
-// confirm (the database died after the commit) is not saved twice.
+// confirm (the database died after the commit) is not saved twice, and it
+// waits longer after each failure (1, 2, 4, 8 s, then 10 s), so a struggling
+// API is not buried under retries.
 import { sleep } from 'k6';
 import exec from 'k6/execution';
 import http from 'k6/http';
@@ -15,7 +17,7 @@ import { Counter } from 'k6/metrics';
 const API = __ENV.API_URL || 'http://api:3000';
 const RATE = Number(__ENV.RATE || 50);
 const EVENTS = Number(__ENV.EVENTS || 10000);
-const TRIES = 60;
+const TRIES = 30;
 
 const accepted = new Counter('events_accepted');
 const retries = new Counter('events_retried');
@@ -30,6 +32,9 @@ export const options = {
       duration: `${Math.ceil(EVENTS / RATE)}s`,
       preAllocatedVUs: 200,
       maxVUs: 2000,
+      // An event still being retried when the sending time ends is waited
+      // for, so every event counts as accepted or given up.
+      gracefulStop: '10m',
     },
   },
 };
@@ -58,7 +63,7 @@ export default function () {
       return;
     }
     retries.add(1, { status: String(response.status) });
-    sleep(1);
+    sleep(Math.min(2 ** (tryNumber - 1), 10));
   }
   gaveUp.add(1);
 }
