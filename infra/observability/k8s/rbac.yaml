@@ -1,0 +1,43 @@
+# Prometheus and Alloy find Hookline's pods through the Kubernetes API. They
+# may only read pods (and Alloy their logs) in the hookline namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: observability
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: observability-read-pods
+  namespace: hookline
+rules:
+  - apiGroups: ['']
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: ['']
+    resources: [pods/log]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: observability-read-pods
+  namespace: hookline
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: observability-read-pods
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: observability
+  - kind: ServiceAccount
+    name: alloy
+    namespace: observability

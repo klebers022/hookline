@@ -32,6 +32,8 @@
     "k8s:images": "node scripts/k8s.mjs images",
     "k8s:project": "node scripts/k8s.mjs project",
     "k8s:smoke": "node scripts/smoke.mjs --k8s",
+    "k8s:obs": "node scripts/k8s.mjs obs",
+    "k8s:obs-check": "node scripts/k8s.mjs obs-check",
     "load:ingest": "node scripts/load.mjs ingest",
     "load:e2e": "node scripts/load.mjs end-to-end",
     "db:migrate": "pnpm --filter @hookline/api migrate",

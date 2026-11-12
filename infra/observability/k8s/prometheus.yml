@@ -1,0 +1,46 @@
+# Scrapes the pods in the hookline namespace, found through the Kubernetes
+# API. The labels match the compose setup (job, instance, service), so the
+# dashboard and the alert rules work unchanged.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  # Each Hookline process serves /metrics on its ops port, named "metrics".
+  - job_name: hookline
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [hookline]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        regex: api|relay|deliver
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        regex: metrics
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        target_label: service
+
+  # The rabbitmq_prometheus plugin. The per-object endpoint has one series
+  # per queue, so the dashboard can show the wait queues and the DLQ apart.
+  - job_name: rabbitmq
+    metrics_path: /metrics/per-object
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [hookline]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        regex: rabbitmq
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        regex: prometheus
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
