@@ -1,0 +1,21 @@
+# The root application (app of apps). It syncs infra/k8s/argocd/apps from
+# main, where the project and the Hookline applications are described, so
+# adding an application is a commit too.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/klebers022/hookline.git
+    targetRevision: main
+    path: infra/k8s/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
