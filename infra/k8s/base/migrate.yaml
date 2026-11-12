@@ -17,10 +17,37 @@ spec:
       labels:
         app.kubernetes.io/name: migrate
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       restartPolicy: Never
+      # k3s lets a new pod through the network policies a moment after it
+      # starts; a pod that connects at once is refused. This waits for that.
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - until pg_isready --host postgres --timeout 2; do sleep 1; done
+          securityContext:
+            runAsUser: 70
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
       containers:
         - name: migrate
           image: ghcr.io/klebers022/hookline-api
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           command: [node, dist/scripts/migrate.js]
           envFrom:
             - configMapRef: { name: hookline-config }
@@ -42,3 +69,10 @@ spec:
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { memory: 256Mi }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      # The root filesystem is read-only; these are the places it writes.
+      volumes:
+        - name: tmp
+          emptyDir: {}

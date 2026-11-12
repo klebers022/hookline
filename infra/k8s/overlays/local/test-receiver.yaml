@@ -27,9 +27,19 @@ spec:
       labels:
         app.kubernetes.io/name: test-receiver
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: test-receiver
           image: ghcr.io/klebers022/hookline-test-receiver
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           ports:
             - name: http
               containerPort: 4000
@@ -39,6 +49,13 @@ spec:
           resources:
             requests: { cpu: 20m, memory: 64Mi }
             limits: { memory: 192Mi }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      # The root filesystem is read-only; these are the places it writes.
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -61,3 +78,27 @@ spec:
               service:
                 name: test-receiver
                 port: { name: http }
+---
+# The postman delivers to it; Traefik publishes its control routes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-receiver
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: test-receiver
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: deliver
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 4000
