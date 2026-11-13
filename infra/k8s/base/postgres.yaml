@@ -55,14 +55,33 @@ spec:
           ports:
             - name: postgres
               containerPort: 5432
+          # After a crash Postgres replays its write-ahead log before taking
+          # connections, and a busy node can take minutes. The liveness probe
+          # only starts once this one passes, so recovery is never cut short.
+          startupProbe:
+            exec:
+              command: [pg_isready, -U, hookline, -d, hookline]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             exec:
               command: [pg_isready, -U, hookline, -d, hookline]
             periodSeconds: 5
+            timeoutSeconds: 5
+          # pg_isready exits 1 when the server answers but refuses
+          # connections (recovering, shutting down) and 2 when it does not
+          # answer at all. Only a server that stopped answering is restarted:
+          # treating 1 as dead killed Postgres in the middle of its recovery
+          # in the chaos test, and it was out for 84 s instead of 15.
           livenessProbe:
             exec:
-              command: [pg_isready, -U, hookline, -d, hookline]
+              command:
+                - sh
+                - -c
+                - pg_isready -U hookline -d hookline -t 4; [ $? -le 1 ]
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 6
           resources:
             requests: { cpu: 100m, memory: 256Mi }
