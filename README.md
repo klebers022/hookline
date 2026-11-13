@@ -247,6 +247,16 @@ The k6 scenarios in `load-tests/` run in a container inside the compose network 
 
 `OTEL_SDK_DISABLED=true` before either command turns tracing off, to measure what it costs. The results are in [docs/capacity.md](docs/capacity.md).
 
+## Chaos test
+
+```sh
+pnpm k8s:images
+pnpm k8s:up chaos
+pnpm chaos
+```
+
+`pnpm chaos` publishes 10,000 events at 50/s to three test destinations (one fails 10% of the time, one is down for the first part of the run, one never answers) and, while they flow, kills the delivery worker, the relay, RabbitMQ, one API pod and Postgres. Then it checks every event: each accepted one is in the database once, every delivery ended `succeeded` or `dead`, the test receiver got every successful one, and no outbox row is left. The `chaos` overlay shortens the retry schedule and the circuit breaker so a run takes about 10 minutes. The `k8s` CI job runs a 1,000-event version on every pull request. The result, with the dashboard during the run and the bugs it found, is in [docs/chaos.md](docs/chaos.md).
+
 ## Published images
 
 Every merge to `main` publishes the four images for `linux/amd64` and `linux/arm64`, tagged `sha-<commit>` and `main`, and a `v*` tag adds its version:

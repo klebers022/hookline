@@ -247,6 +247,16 @@ Os cenários do k6 em `load-tests/` rodam num contêiner dentro da rede do compo
 
 `OTEL_SDK_DISABLED=true` antes de qualquer um dos comandos desliga o tracing, para medir quanto ele custa. Os resultados estão em [docs/capacity.md](docs/capacity.md).
 
+## Teste de caos
+
+```sh
+pnpm k8s:images
+pnpm k8s:up chaos
+pnpm chaos
+```
+
+O `pnpm chaos` publica 10 mil eventos a 50/s para três destinos de teste (um falha 10% das vezes, um fica fora do ar na primeira parte da rodada e um nunca responde) e, enquanto eles passam, derruba o carteiro, o relay, o RabbitMQ, um pod da API e o Postgres. Depois confere cada evento: cada um aceito está no banco uma vez, cada entrega terminou `succeeded` ou `dead`, a casa de teste recebeu cada entrega bem-sucedida e nenhuma linha da outbox ficou para trás. O overlay `chaos` encurta o calendário de tentativas e o disjuntor, para uma rodada levar cerca de 10 minutos. O job `k8s` do CI roda uma versão com 1.000 eventos em cada PR. O resultado, com o painel durante a rodada e os bugs que o teste encontrou, está em [docs/chaos.md](docs/chaos.md).
+
 ## Imagens publicadas
 
 Todo merge na `main` publica as quatro imagens para `linux/amd64` e `linux/arm64`, com as tags `sha-<commit>` e `main`, e uma tag `v*` acrescenta a versão:
