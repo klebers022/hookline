@@ -231,6 +231,16 @@ docker compose --profile app run --rm api node dist/scripts/retention.js
 
 The retention script deletes outbox rows published over 7 days ago (`RETENTION_OUTBOX_DAYS`) and events over 30 days old (`RETENTION_EVENT_DAYS`) whose deliveries have all ended, with their deliveries and attempts. It never deletes an event with a delivery still in progress, and it deletes in batches of 1,000 rows, each its own short transaction. Run it daily; in Kubernetes it becomes a CronJob.
 
+## Backup
+
+```sh
+pnpm k8s:backup
+pnpm k8s:restore-test
+pnpm k8s:restore [hookline-<timestamp>.dump]
+```
+
+In Kubernetes, a CronJob runs `pg_dump` every night at 02:30 UTC, half an hour before retention, and `rclone` sends the copy to an S3-compatible store in the cluster (the Versity S3 Gateway), which keeps 7 days of copies. `k8s:backup` runs it now. `k8s:restore-test` takes a backup, restores it into a throwaway Postgres and compares every table's row count with the live database; the `k8s` CI job runs it after the chaos test. `k8s:restore` restores a copy over the live database, stopping the API, the relay and the delivery worker meanwhile: everything written after that copy is lost, so read [the restore runbook](docs/runbooks/restore.md) first. Why this design, and its limits (the copy lives in the same cluster; up to a day of data lost): [ADR 14](docs/adr/0014-backup-com-pg-dump-em-s3.md).
+
 ## Load tests
 
 ```sh

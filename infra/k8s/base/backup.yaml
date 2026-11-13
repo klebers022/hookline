@@ -1,0 +1,192 @@
+# Backup of the book of records (ADR 14): every night, pg_dump writes a
+# copy of the database and rclone sends it to an S3-compatible store, which
+# keeps 7 days of copies. Here the store is the Versity S3 Gateway, in the
+# cluster; in production the same job would point at an object storage
+# outside it, by changing the endpoint and the keys.
+#
+# pnpm k8s:backup runs it now; pnpm k8s:restore-test restores the latest
+# copy into a throwaway database and compares it with the live one.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backup-store
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: backup-store
+  ports:
+    - name: s3
+      port: 7070
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: backup-store
+spec:
+  serviceName: backup-store
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backup-store
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backup-store
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: versitygw
+          image: versity/versitygw:v1.10.0
+          # Each folder under /data is a bucket, each file an object.
+          args: [posix, /data]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          env:
+            - name: ROOT_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: hookline-backup, key: ACCESS_KEY_ID }
+            - name: ROOT_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: hookline-backup, key: SECRET_ACCESS_KEY }
+          ports:
+            - name: s3
+              containerPort: 7070
+          readinessProbe:
+            tcpSocket: { port: s3 }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: s3 }
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Half an hour before the retention clean-up, so a copy always exists of
+# what it is about to delete.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: '30 2 * * *'
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            seccompProfile: { type: RuntimeDefault }
+          initContainers:
+            # The custom format (-Fc) is compressed and lets pg_restore pick
+            # what to restore. pg_dump reads one consistent snapshot, so the
+            # copy is coherent while the API keeps writing.
+            - name: dump
+              image: postgres:17-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  until pg_isready --host postgres --timeout 2; do sleep 1; done
+                  file="/backup/hookline-$(date -u +%Y%m%dT%H%M%SZ).dump"
+                  pg_dump --host postgres --username hookline --dbname hookline \
+                    --format custom --file "$file"
+                  echo "Dumped $(basename "$file"), $(du -h "$file" | cut -f1)"
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      { name: hookline-secrets, key: POSTGRES_PASSWORD }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 50m, memory: 32Mi }
+                limits: { memory: 256Mi }
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: rclone/rclone:1.75.2
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  rclone mkdir store:hookline-backups
+                  rclone copy /backup store:hookline-backups
+                  rclone delete --min-age 7d store:hookline-backups
+                  echo "Stored. Copies kept:"
+                  rclone lsl store:hookline-backups
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: RCLONE_CONFIG
+                  value: /dev/null
+                - name: RCLONE_CONFIG_STORE_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_STORE_PROVIDER
+                  value: Other
+                - name: RCLONE_CONFIG_STORE_ENDPOINT
+                  value: http://backup-store:7070
+                - name: RCLONE_CONFIG_STORE_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef: { name: hookline-backup, key: ACCESS_KEY_ID }
+                - name: RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      { name: hookline-backup, key: SECRET_ACCESS_KEY }
+              securityContext:
+                runAsUser: 1000
+                runAsGroup: 1000
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits: { memory: 128Mi }
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backup
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}

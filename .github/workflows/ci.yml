@@ -81,6 +81,8 @@ jobs:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /manifests/root.yaml /manifests/apps
+          # The jobs the scripts apply on demand (restore test, restore).
+          docker run --rm -v ./infra/k8s/jobs:/manifests:ro ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c -strict -summary /manifests
       - name: Install k3d
         run: |
           curl -fsSL -o k3d https://github.com/k3d-io/k3d/releases/download/v5.9.0/k3d-linux-amd64
@@ -97,6 +99,9 @@ jobs:
       # every event was accepted once and every delivery ended.
       - run: node scripts/k8s.mjs up chaos
       - run: node scripts/chaos.mjs --events 1000 --rate 20
+      # The backup of what the chaos test left: a copy restored into a
+      # throwaway database must have the same rows as the live one.
+      - run: node scripts/k8s.mjs restore-test
       - if: failure()
         run: |
           for ns in hookline observability; do

@@ -49,7 +49,8 @@ spec:
       ports:
         - port: 3000
 ---
-# Only Hookline's own processes and scripts open the book of records.
+# Only Hookline's own processes and scripts open the book of records,
+# the nightly backup reads it and a restore (pnpm k8s:restore) rewrites it.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -65,7 +66,8 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/name
                 operator: In
-                values: [api, relay, deliver, migrate, retention]
+                values:
+                  [api, relay, deliver, migrate, retention, backup, restore]
       ports:
         - port: 5432
 ---
@@ -112,3 +114,24 @@ spec:
       ports:
         - port: 9464
         - port: 15692
+---
+# The backup store takes copies from the backup job and hands them to the
+# restore test and to a restore; nothing else reaches it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-store
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: backup-store
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [backup, restore-test, restore]
+      ports:
+        - port: 7070

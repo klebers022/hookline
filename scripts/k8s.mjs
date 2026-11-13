@@ -11,6 +11,11 @@
 //   argocd        installs Argo CD and the root application, which syncs
 //                 the stack from main from then on
 //   bump          pins the local overlay to the images of the latest main
+//   backup        runs the nightly database backup now
+//   restore-test  takes a backup, restores it into a throwaway database and
+//                 compares every table's row count with the live one
+//   restore [NAME] restores the latest backup, or the one named, over the
+//                 live database (see docs/runbooks/restore.md first)
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
@@ -43,9 +48,11 @@ function clusterExists() {
   return clusters.some((cluster) => cluster.name === CLUSTER);
 }
 
-// Random passwords and encryption key, created once per cluster and never
-// written to the repository. Sealed Secrets replaces this in phase 7.
-function ensureSecrets() {
+// Random passwords and keys, created once per cluster and never written to
+// the repository. Sealed Secrets replaces this in phase 7. A Secret that
+// already exists is left alone, so the passwords stay the ones the
+// databases were created with.
+function ensureSecret(name, literals) {
   const existing = run(
     'kubectl',
     [
@@ -53,7 +60,7 @@ function ensureSecrets() {
       NAMESPACE,
       'get',
       'secret',
-      'hookline-secrets',
+      name,
       '--ignore-not-found',
       '--output',
       'name',
@@ -71,17 +78,30 @@ function ensureSecrets() {
       'create',
       'secret',
       'generic',
-      'hookline-secrets',
-      `--from-literal=POSTGRES_PASSWORD=${randomBytes(24).toString('hex')}`,
-      `--from-literal=RABBITMQ_PASSWORD=${randomBytes(24).toString('hex')}`,
-      `--from-literal=ENCRYPTION_KEY=${randomBytes(32).toString('base64')}`,
+      name,
+      ...Object.entries(literals).map(
+        ([key, value]) => `--from-literal=${key}=${value}`,
+      ),
       '--dry-run=client',
       '--output=yaml',
     ],
     { quiet: true },
   );
   run('kubectl', ['apply', '--filename', '-'], { quiet: true, input: secret });
-  console.log('Created the hookline-secrets Secret');
+  console.log(`Created the ${name} Secret`);
+}
+
+function ensureSecrets() {
+  ensureSecret('hookline-secrets', {
+    POSTGRES_PASSWORD: randomBytes(24).toString('hex'),
+    RABBITMQ_PASSWORD: randomBytes(24).toString('hex'),
+    ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+  });
+  // The keys of the backup store (ADR 14).
+  ensureSecret('hookline-backup', {
+    ACCESS_KEY_ID: `hookline-${randomBytes(6).toString('hex')}`,
+    SECRET_ACCESS_KEY: randomBytes(24).toString('hex'),
+  });
 }
 
 function ensureCluster() {
@@ -271,6 +291,227 @@ function argocd() {
   );
 }
 
+// Waits for a Job to succeed or fail, and returns whether it succeeded.
+async function waitForJob(name, timeoutMs = 300_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const status = JSON.parse(
+      run(
+        'kubectl',
+        [
+          '--namespace',
+          NAMESPACE,
+          'get',
+          'job',
+          name,
+          '--output',
+          'jsonpath={.status}',
+        ],
+        { quiet: true },
+      ) || '{}',
+    );
+    if (status.succeeded) {
+      return true;
+    }
+    if (status.failed) {
+      return false;
+    }
+    await sleep(2000);
+  }
+  throw new Error(`Job ${name} did not finish in ${timeoutMs / 1000} s`);
+}
+
+function jobLogs(name) {
+  return run(
+    'kubectl',
+    ['--namespace', NAMESPACE, 'logs', `job/${name}`, '--all-containers'],
+    { quiet: true },
+  );
+}
+
+// Runs the nightly backup now, from the CronJob's own template, so this
+// tests exactly what runs every night.
+async function backup() {
+  const name = `backup-manual-${Date.now()}`;
+  kubectl('create', 'job', name, '--from=cronjob/backup');
+  const succeeded = await waitForJob(name);
+  process.stdout.write(jobLogs(name));
+  if (!succeeded) {
+    throw new Error(`The backup job ${name} failed`);
+  }
+}
+
+// "count <table> <rows>" lines, from the live database or the restored one.
+const COUNT_TABLES = `
+  SELECT 'count', table_name,
+    (xpath('/row/c/text()', query_to_xml(
+      format('SELECT count(*) AS c FROM public.%I', table_name),
+      false, true, '')))[1]::text
+  FROM information_schema.tables
+  WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+  ORDER BY table_name`;
+
+function parseCounts(output) {
+  const counts = new Map();
+  for (const line of output.split('\n')) {
+    const [tag, table, rows] = line.trim().split(' ');
+    if (tag === 'count' && table) {
+      counts.set(table, Number(rows));
+    }
+  }
+  return counts;
+}
+
+// Takes a backup, restores it into a throwaway database (the restore-test
+// Job) and compares the row count of every table with the live database.
+// Run it while nothing writes, or the live counts move on from the copy.
+async function restoreTest() {
+  await backup();
+  kubectl('delete', 'job', 'restore-test', '--ignore-not-found', '--wait');
+  run('kubectl', ['apply', '--filename', 'infra/k8s/jobs/restore-test.yaml']);
+  const succeeded = await waitForJob('restore-test');
+  const logs = jobLogs('restore-test');
+  if (!succeeded) {
+    process.stdout.write(logs);
+    throw new Error('The restore failed');
+  }
+  const restored = parseCounts(logs);
+  const live = parseCounts(
+    run(
+      'kubectl',
+      [
+        '--namespace',
+        NAMESPACE,
+        'exec',
+        'postgres-0',
+        '--',
+        'psql',
+        '--username',
+        'hookline',
+        '--dbname',
+        'hookline',
+        '--tuples-only',
+        '--no-align',
+        '--field-separator',
+        ' ',
+        '--command',
+        COUNT_TABLES,
+      ],
+      { quiet: true },
+    ),
+  );
+  console.log(logs.split('\n').find((line) => line.startsWith('restored')));
+  console.log(
+    `\n${'table'.padEnd(20)} ${'live'.padStart(9)} ${'restored'.padStart(10)}`,
+  );
+  let same = live.size > 0;
+  for (const table of new Set([...live.keys(), ...restored.keys()])) {
+    const ok = live.get(table) === restored.get(table);
+    same &&= ok;
+    console.log(
+      `${table.padEnd(20)} ${String(live.get(table) ?? '-').padStart(9)} ${String(restored.get(table) ?? '-').padStart(10)}${ok ? '' : '  DIFFERENT'}`,
+    );
+  }
+  if (!same) {
+    throw new Error('The restored copy does not match the live database');
+  }
+  console.log('\nThe restored copy matches the live database');
+}
+
+// The processes that write to the database. A restore stops them, so
+// nothing writes while the tables are replaced.
+const WRITERS = ['api', 'relay', 'deliver'];
+
+// Restores a backup over the live database: the latest one, or the one
+// named. Everything written after that backup is lost
+// (docs/runbooks/restore.md). The writers are stopped first and started
+// again afterwards, even when the restore fails.
+async function restore(backupName = '') {
+  const argocd = run(
+    'kubectl',
+    [
+      'get',
+      'crd',
+      'applications.argoproj.io',
+      '--ignore-not-found',
+      '--output',
+      'name',
+    ],
+    { quiet: true },
+  ).trim();
+  const automated =
+    argocd &&
+    run(
+      'kubectl',
+      [
+        '--namespace',
+        'argocd',
+        'get',
+        'application',
+        'hookline',
+        '--ignore-not-found',
+        '--output',
+        'jsonpath={.spec.syncPolicy.automated}',
+      ],
+      { quiet: true },
+    ).trim();
+  if (automated) {
+    throw new Error(
+      'Argo CD would start the stopped processes again: turn off automated sync on the hookline Application first',
+    );
+  }
+  const replicas = Object.fromEntries(
+    WRITERS.map((name) => [
+      name,
+      run(
+        'kubectl',
+        [
+          '--namespace',
+          NAMESPACE,
+          'get',
+          'deployment',
+          name,
+          '--output',
+          'jsonpath={.spec.replicas}',
+        ],
+        { quiet: true },
+      ).trim(),
+    ]),
+  );
+  for (const name of WRITERS) {
+    kubectl('scale', `deployment/${name}`, '--replicas=0');
+  }
+  for (const name of WRITERS) {
+    kubectl(
+      'wait',
+      'pod',
+      '--selector',
+      `app.kubernetes.io/name=${name}`,
+      '--for=delete',
+      '--timeout=120s',
+    );
+  }
+  try {
+    kubectl('delete', 'job', 'restore', '--ignore-not-found', '--wait');
+    const manifest = readFileSync('infra/k8s/jobs/restore.yaml', 'utf8');
+    const named = manifest.replace(
+      "- name: BACKUP\n              value: ''",
+      `- name: BACKUP\n              value: '${backupName.replace(/[^\w.-]/g, '')}'`,
+    );
+    run('kubectl', ['apply', '--filename', '-'], { input: named });
+    const succeeded = await waitForJob('restore', 600_000);
+    process.stdout.write(jobLogs('restore'));
+    if (!succeeded) {
+      throw new Error('The restore failed; the database was left as it was');
+    }
+  } finally {
+    for (const name of WRITERS) {
+      kubectl('scale', `deployment/${name}`, `--replicas=${replicas[name]}`);
+    }
+    waitForRollouts(NAMESPACE);
+  }
+}
+
 const OVERLAY = 'infra/k8s/overlays/local/kustomization.yaml';
 const REGISTRY = 'ghcr.io';
 const OWNER = 'klebers022';
@@ -354,9 +595,18 @@ switch (command) {
   case 'bump':
     await bump();
     break;
+  case 'backup':
+    await backup();
+    break;
+  case 'restore-test':
+    await restoreTest();
+    break;
+  case 'restore':
+    await restore(args[0]);
+    break;
   default:
     console.error(
-      'Usage: node scripts/k8s.mjs up [overlay] | down | images | project NAME | obs | obs-check | argocd | bump',
+      'Usage: node scripts/k8s.mjs up [overlay] | down | images | project NAME | obs | obs-check | argocd | bump | backup | restore-test | restore [BACKUP]',
     );
     process.exit(1);
 }

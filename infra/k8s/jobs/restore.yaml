@@ -1,0 +1,114 @@
+# Restores a backup over the live database (pnpm k8s:restore). Everything
+# written after that backup is lost: see docs/runbooks/restore.md before
+# running it. The script stops the API, the relay and the delivery worker
+# first and starts them again afterwards.
+#
+# BACKUP names the copy to restore; empty means the latest. Not part of the
+# Kustomize base: the script applies it on demand.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: restore
+  namespace: hookline
+  labels:
+    app.kubernetes.io/part-of: hookline
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: restore
+        app.kubernetes.io/part-of: hookline
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: fetch
+          image: rclone/rclone:1.75.2
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              name="${BACKUP:-$(rclone lsf store:hookline-backups | sort | tail -n 1)}"
+              if [ -z "$name" ]; then
+                echo "No backup in the store" >&2
+                exit 1
+              fi
+              rclone copyto "store:hookline-backups/$name" /restore/backup.dump
+              echo "$name" > /restore/name
+          env:
+            - name: BACKUP
+              value: ''
+            - name: HOME
+              value: /tmp
+            - name: RCLONE_CONFIG
+              value: /dev/null
+            - name: RCLONE_CONFIG_STORE_TYPE
+              value: s3
+            - name: RCLONE_CONFIG_STORE_PROVIDER
+              value: Other
+            - name: RCLONE_CONFIG_STORE_ENDPOINT
+              value: http://backup-store:7070
+            - name: RCLONE_CONFIG_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: hookline-backup, key: ACCESS_KEY_ID }
+            - name: RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: hookline-backup, key: SECRET_ACCESS_KEY }
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - name: restore
+              mountPath: /restore
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        # --clean drops each object before recreating it, and
+        # --single-transaction makes it all or nothing: a failed restore
+        # leaves the database as it was.
+        - name: restore
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              until pg_isready --host postgres --timeout 2; do sleep 1; done
+              pg_restore --host postgres --username hookline --dbname hookline \
+                --clean --if-exists --no-owner --single-transaction \
+                --exit-on-error /restore/backup.dump
+              echo "restored $(cat /restore/name)"
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: hookline-secrets, key: POSTGRES_PASSWORD }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - name: restore
+              mountPath: /restore
+              readOnly: true
+      volumes:
+        - name: restore
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

@@ -11,6 +11,7 @@ O que fazer quando algo dá errado no Hookline. Cada alerta do Prometheus aponta
 | [Processo fora do ar](process-down.md)           | alerta `HooklineProcessDown`                                         |
 | [Postgres fora do ar](postgres-down.md)          | a API responde erro, e os logs mostram falhas de conexão com o banco |
 | [RabbitMQ fora do ar](rabbitmq-down.md)          | o relay e o carteiro ficam "não prontos", e a outbox para            |
+| [Restaurar o backup](restore.md)                 | dados perdidos ou estragados no banco                                |
 | [Voltar uma versão](rollback.md)                 | uma versão nova piorou algo                                          |
 
 ## Antes de começar
