@@ -72,7 +72,7 @@ jobs:
       # Every manifest of every overlay against the Kubernetes schemas.
       - name: Validate the manifests
         run: |
-          for dir in infra/k8s/overlays/local infra/k8s/overlays/ci infra/observability; do
+          for dir in infra/k8s/overlays/local infra/k8s/overlays/ci infra/k8s/overlays/chaos infra/observability; do
             kubectl kustomize "$dir" |
               docker run --rm -i ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c -strict -summary -
           done
@@ -92,6 +92,11 @@ jobs:
       - run: node scripts/smoke.mjs --k8s
       # The smoke test's traffic shows up as metrics, traces and logs.
       - run: node scripts/k8s.mjs obs-check
+      # The chaos test, shortened: 1,000 events while the worker, the relay,
+      # RabbitMQ, an API pod and Postgres are killed, and the proof that
+      # every event was accepted once and every delivery ended.
+      - run: node scripts/k8s.mjs up chaos
+      - run: node scripts/chaos.mjs --events 1000 --rate 20
       - if: failure()
         run: |
           for ns in hookline observability; do

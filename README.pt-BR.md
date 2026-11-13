@@ -88,7 +88,7 @@ A entrega é "pelo menos uma vez", então um endpoint pode receber o mesmo event
 
 ### Isolamento entre endpoints
 
-- **Circuit breaker:** depois de 5 falhas seguidas, o Hookline deixa de chamar o endpoint por 5 minutos. As entregas esperam sem gastar tentativas, até o fim do calendário. Os campos `consecutive_failures` e `circuit_open_until` do endpoint mostram o estado. Um sucesso, a reativação do endpoint ou a troca da URL fecham o circuito.
+- **Circuit breaker:** depois de 5 falhas seguidas, o Hookline deixa de chamar o endpoint por 5 minutos (`CIRCUIT_OPEN_SECONDS`). As entregas esperam sem gastar tentativas, até o fim do calendário. Os campos `consecutive_failures` e `circuit_open_until` do endpoint mostram o estado. Um sucesso, a reativação do endpoint ou a troca da URL fecham o circuito.
 - **Limite de envios:** cada worker envia no máximo 50 webhooks por segundo a cada endpoint, valor definido em `ENDPOINT_RATE_LIMIT_PER_SECOND`. As entregas acima do limite esperam um segundo, sem gastar tentativas.
 
 ## Publicação segura
@@ -246,6 +246,16 @@ Os cenários do k6 em `load-tests/` rodam num contêiner dentro da rede do compo
 - **`load:e2e`** mantém 200 eventos/s por 10 minutos (`RATE`, `DURATION`), espera todas as entregas terminarem e confere no banco que cada evento tem uma entrega concluída, com o atraso até a 1ª tentativa comparado ao SLO de 5 s.
 
 `OTEL_SDK_DISABLED=true` antes de qualquer um dos comandos desliga o tracing, para medir quanto ele custa. Os resultados estão em [docs/capacity.md](docs/capacity.md).
+
+## Teste de caos
+
+```sh
+pnpm k8s:images
+pnpm k8s:up chaos
+pnpm chaos
+```
+
+O `pnpm chaos` publica 10 mil eventos a 50/s para três destinos de teste (um falha 10% das vezes, um fica fora do ar na primeira parte da rodada e um nunca responde) e, enquanto eles passam, derruba o carteiro, o relay, o RabbitMQ, um pod da API e o Postgres. Depois confere cada evento: cada um aceito está no banco uma vez, cada entrega terminou `succeeded` ou `dead`, a casa de teste recebeu cada entrega bem-sucedida e nenhuma linha da outbox ficou para trás. O overlay `chaos` encurta o calendário de tentativas e o disjuntor, para uma rodada levar cerca de 10 minutos. O job `k8s` do CI roda uma versão com 1.000 eventos em cada PR. O resultado, com o painel durante a rodada e os bugs que o teste encontrou, está em [docs/chaos.md](docs/chaos.md).
 
 ## Imagens publicadas
 

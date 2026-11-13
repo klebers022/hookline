@@ -88,7 +88,7 @@ Delivery is at least once, so an endpoint can receive the same event more than o
 
 ### Endpoint isolation
 
-- **Circuit breaker:** after 5 failures in a row, Hookline stops calling the endpoint for 5 minutes. Deliveries wait without spending attempts, up to the end of their schedule. The endpoint's `consecutive_failures` and `circuit_open_until` show its state. A success, activating the endpoint again, or changing its URL closes the circuit.
+- **Circuit breaker:** after 5 failures in a row, Hookline stops calling the endpoint for 5 minutes (`CIRCUIT_OPEN_SECONDS`). Deliveries wait without spending attempts, up to the end of their schedule. The endpoint's `consecutive_failures` and `circuit_open_until` show its state. A success, activating the endpoint again, or changing its URL closes the circuit.
 - **Rate limit:** each worker sends at most 50 webhooks per second to each endpoint, set with `ENDPOINT_RATE_LIMIT_PER_SECOND`. Deliveries over the limit wait one second, without spending attempts.
 
 ## Publishing safely
@@ -246,6 +246,16 @@ The k6 scenarios in `load-tests/` run in a container inside the compose network 
 - **`load:e2e`** holds 200 events/s for 10 minutes (`RATE`, `DURATION`), waits for every delivery to end and checks in the database that each event has a finished delivery, with the delay to the first attempt against the 5 s SLO.
 
 `OTEL_SDK_DISABLED=true` before either command turns tracing off, to measure what it costs. The results are in [docs/capacity.md](docs/capacity.md).
+
+## Chaos test
+
+```sh
+pnpm k8s:images
+pnpm k8s:up chaos
+pnpm chaos
+```
+
+`pnpm chaos` publishes 10,000 events at 50/s to three test destinations (one fails 10% of the time, one is down for the first part of the run, one never answers) and, while they flow, kills the delivery worker, the relay, RabbitMQ, one API pod and Postgres. Then it checks every event: each accepted one is in the database once, every delivery ended `succeeded` or `dead`, the test receiver got every successful one, and no outbox row is left. The `chaos` overlay shortens the retry schedule and the circuit breaker so a run takes about 10 minutes. The `k8s` CI job runs a 1,000-event version on every pull request. The result, with the dashboard during the run and the bugs it found, is in [docs/chaos.md](docs/chaos.md).
 
 ## Published images
 
