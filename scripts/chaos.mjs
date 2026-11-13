@@ -335,6 +335,8 @@ console.log(
   `Chaos run ${runId}: ${EVENTS} events at ${RATE}/s for ${SEND_SECONDS.toFixed(0)} s, project ${projectId}`,
 );
 const start = Date.now();
+// A run where a failure could not be caused proves less than it claims.
+const faultsFailed = [];
 console.log(`Started at ${new Date(start).toISOString()}`);
 const timers = FAULTS.map((fault) =>
   setTimeout(async () => {
@@ -342,6 +344,7 @@ const timers = FAULTS.map((fault) =>
       await fault.run();
       console.log(`${elapsed(start)}  ${fault.what}`);
     } catch (error) {
+      faultsFailed.push(fault.what);
       console.log(`${elapsed(start)}  FAILED: ${fault.what}: ${error.message}`);
     }
   }, fault.at),
@@ -428,6 +431,11 @@ for (const name of Object.keys(DESTINATIONS)) {
 console.log();
 
 const n = Number(events);
+check(
+  'Every failure was caused',
+  faultsFailed.length === 0,
+  faultsFailed.join('; ') || `${FAULTS.length} of ${FAULTS.length}`,
+);
 check(
   'Every event sent was accepted',
   k6.gave_up === 0,

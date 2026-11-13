@@ -11,3 +11,12 @@ image: rancher/k3s:v1.35.5-k3s1
 ports:
   - port: 127.0.0.1:8088:80
     nodeFilters: [loadbalancer]
+options:
+  k3d:
+    loadbalancer:
+      # k3d's load balancer is an nginx with 1,024 connections by default.
+      # The chaos test's client holds hundreds open while the API is slow,
+      # and past the limit requests hung at the door for minutes, never
+      # reaching Traefik.
+      configOverrides:
+        - settings.workerConnections=16384
