@@ -220,7 +220,7 @@ The processes write JSON lines to stdout and nothing else. Alloy reads the conta
 | `HooklineHighFailureRate`  | Over half the deliveries failed or waited on an open circuit breaker in the last 5 minutes, for 2 minutes |
 | `HooklineProcessDown`      | Prometheus cannot scrape a process for a minute                                                           |
 
-Nothing sends notifications yet: firing alerts show on Prometheus's Alerts page and in the dashboard.
+Nothing sends notifications yet: firing alerts show on Prometheus's Alerts page and in the dashboard. Each alert links to its runbook (`runbook_url`), in [docs/runbooks](docs/runbooks/README.md) (in Portuguese), which also covers Postgres or RabbitMQ being down and rolling back a version. Incidents are written up in [docs/postmortems](docs/postmortems/README.md).
 
 ## Retention
 

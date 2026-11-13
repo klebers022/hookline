@@ -220,7 +220,7 @@ As regras de alerta ficam em `infra/observability/prometheus/alerts.yml`, e `pnp
 | `HooklineHighFailureRate`  | Mais da metade das entregas falhou ou esperou um disjuntor aberto nos últimos 5 minutos, por 2 minutos |
 | `HooklineProcessDown`      | O Prometheus não consegue coletar um processo por um minuto                                            |
 
-Ainda não há envio de avisos: os alertas disparados aparecem na página Alerts do Prometheus e no painel.
+Ainda não há envio de avisos: os alertas disparados aparecem na página Alerts do Prometheus e no painel. Cada alerta aponta para o seu runbook (`runbook_url`), em [docs/runbooks](docs/runbooks/README.md), que também cobre o Postgres ou o RabbitMQ fora do ar e como voltar uma versão. Os incidentes ficam registrados em [docs/postmortems](docs/postmortems/README.md).
 
 ## Retenção
 

@@ -21,6 +21,7 @@ tests:
           - exp_labels:
               severity: critical
             exp_annotations:
+              runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/outbox-stuck.md
               summary: The outbox has not been published for over a minute
               description: The oldest pending outbox row is 3m 1s old. Check that the relay is running and can reach RabbitMQ.
 
@@ -39,6 +40,7 @@ tests:
           - exp_labels:
               severity: warning
             exp_annotations:
+              runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/dead-letters.md
               summary: Deliveries went to the dead letter queue
               description: 1 deliveries reached the DLQ in the last 10 minutes. GET /v1/deliveries?status=dead lists them.
 
@@ -59,6 +61,7 @@ tests:
           - exp_labels:
               severity: warning
             exp_annotations:
+              runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/first-attempt-slow.md
               summary: First attempts start later than the 5 s SLO
               description: The p99 delay from accepted event to first attempt is 9.95s. Look for a backlog on deliveries.ready or a stuck outbox.
 
@@ -76,6 +79,7 @@ tests:
           - exp_labels:
               severity: warning
             exp_annotations:
+              runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/high-failure-rate.md
               summary: Most deliveries are failing
               description: 85.71% of the deliveries in the last 5 minutes failed or waited on an open circuit breaker.
 
@@ -98,6 +102,7 @@ tests:
           - exp_labels:
               severity: warning
             exp_annotations:
+              runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/high-failure-rate.md
               summary: Most deliveries are failing
               description: 100% of the deliveries in the last 5 minutes failed or waited on an open circuit breaker.
 
@@ -140,5 +145,6 @@ tests:
               job: hookline
               instance: deliver:9464
             exp_annotations:
+              runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/process-down.md
               summary: deliver:9464 is down
               description: Prometheus has not been able to scrape deliver:9464 for a minute.
