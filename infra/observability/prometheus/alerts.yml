@@ -2,6 +2,8 @@
 # (Alertmanager arrives with production, in phase 7), firing alerts show on
 # Prometheus's Alerts page and in Grafana.
 #
+# Each alert links to its runbook in docs/runbooks (runbook_url).
+#
 # Tested by alerts.test.yml: pnpm obs:test-rules.
 groups:
   - name: hookline
@@ -15,6 +17,7 @@ groups:
         labels:
           severity: critical
         annotations:
+          runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/outbox-stuck.md
           summary: The outbox has not been published for over a minute
           description: >-
             The oldest pending outbox row is {{ $value | humanizeDuration }}
@@ -27,6 +30,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/dead-letters.md
           summary: Deliveries went to the dead letter queue
           description: >-
             {{ $value | humanize }} deliveries reached the DLQ in the last 10
@@ -43,6 +47,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/first-attempt-slow.md
           summary: First attempts start later than the 5 s SLO
           description: >-
             The p99 delay from accepted event to first attempt is
@@ -74,6 +79,7 @@ groups:
         labels:
           severity: warning
         annotations:
+          runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/high-failure-rate.md
           summary: Most deliveries are failing
           description: >-
             {{ $value | humanizePercentage }} of the deliveries in the last 5
@@ -85,5 +91,6 @@ groups:
         labels:
           severity: critical
         annotations:
+          runbook_url: https://github.com/klebers022/hookline/blob/main/docs/runbooks/process-down.md
           summary: '{{ $labels.instance }} is down'
           description: Prometheus has not been able to scrape {{ $labels.instance }} for a minute.
