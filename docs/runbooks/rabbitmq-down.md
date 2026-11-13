@@ -46,7 +46,7 @@ kubectl -n hookline exec rabbitmq-0 -- rabbitmq-diagnostics alarms
   WHERE status IN ('pending', 'retrying') GROUP BY 1;
   ```
 
-  **Limitação conhecida:** ainda não há um comando que reenfileire essas entregas. Elas precisam de uma linha nova na outbox, e isso não deve ser feito com SQL à mão. Até existir esse comando, é o caso a evitar, e o backup do volume é a proteção.
+  **Limitação conhecida:** ainda não há um comando que reenfileire essas entregas. Elas precisam de uma linha nova na outbox, e isso não deve ser feito com SQL à mão. Até existir esse comando, é o caso a evitar.
 
 ## Confirmação
 

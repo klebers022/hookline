@@ -16,6 +16,7 @@ resources:
   - deliver.yaml
   - web.yaml
   - retention.yaml
+  - backup.yaml
   - network-policies.yaml
 # Settings shared by every Hookline process. The name gets a hash of the
 # content, so changing a value rolls the pods that read it.

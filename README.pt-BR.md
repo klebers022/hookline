@@ -231,6 +231,16 @@ docker compose --profile app run --rm api node dist/scripts/retention.js
 
 O script de retenção apaga as linhas da outbox publicadas há mais de 7 dias (`RETENTION_OUTBOX_DAYS`) e os eventos com mais de 30 dias (`RETENTION_EVENT_DAYS`) cujas entregas já terminaram, junto com as entregas e as tentativas. Ele nunca apaga um evento com entrega em andamento e apaga em lotes de 1.000 linhas, cada um numa transação curta. Rode-o uma vez por dia; no Kubernetes, ele vira um CronJob.
 
+## Backup
+
+```sh
+pnpm k8s:backup
+pnpm k8s:restore-test
+pnpm k8s:restore [hookline-<data-hora>.dump]
+```
+
+No Kubernetes, um CronJob roda o `pg_dump` toda noite às 02:30 UTC, meia hora antes da retenção, e o `rclone` envia a cópia para um armazenamento compatível com S3 dentro do cluster (o Versity S3 Gateway), que guarda as cópias dos últimos 7 dias. O `k8s:backup` faz um backup na hora. O `k8s:restore-test` faz um backup, restaura num Postgres descartável e compara a contagem de linhas de cada tabela com o banco vivo; o job `k8s` do CI roda esse teste depois do teste de caos. O `k8s:restore` restaura uma cópia sobre o banco vivo, parando a API, o relay e o carteiro enquanto isso: tudo o que foi gravado depois da cópia se perde, então leia antes [o runbook de restauração](docs/runbooks/restore.md). Por que assim, e os limites (a cópia fica no mesmo cluster; até um dia de dados perdidos): [ADR 14](docs/adr/0014-backup-com-pg-dump-em-s3.md).
+
 ## Testes de carga
 
 ```sh

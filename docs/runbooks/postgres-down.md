@@ -48,7 +48,7 @@ kubectl -n hookline exec postgres-0 -- df -h /var/lib/postgresql/data
   kubectl -n hookline create job --from=cronjob/retention retention-manual
   ```
 
-- **Dados corrompidos ou volume perdido:** restaure o backup mais recente (o runbook de restauração entra com o backup, na etapa C da fase 8).
+- **Dados corrompidos ou volume perdido:** veja [Restaurar o backup](restore.md).
 
 ## Confirmação
 
