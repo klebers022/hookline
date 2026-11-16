@@ -1,14 +1,86 @@
 # Hookline
 
-Entrega confiável de webhooks: publique um evento uma vez, e o Hookline o entrega pelo menos uma vez ou o move para uma dead-letter queue, com histórico auditável de cada tentativa.
+Entrega confiável de webhooks. O cliente publica um evento uma vez; o Hookline o entrega a cada endpoint inscrito pelo menos uma vez, ou o move para uma dead-letter queue, e guarda um registro auditável de cada tentativa.
 
-> **Status:** início do desenvolvimento. Os eventos são entregues, assinados, registrados e reenviados em caso de falha, e as entregas esgotadas vão para uma dead-letter queue. As URLs dos endpoints são protegidas contra SSRF, um endpoint com falha ou sobrecarga não atrasa os outros, e os processos encerram sem interromper entregas. As imagens de contêiner são publicadas para amd64 e arm64, métricas, traces e logs mostram por onde cada entrega passou, e um painel web mostra cada tentativa e reenvia as entregas com falha. Kubernetes e um deploy público vêm a seguir.
+Um projeto de portfólio sobre mensageria, confiabilidade e operação: outbox transacional, novas tentativas pelas filas de espera do RabbitMQ, Kubernetes com GitOps, observabilidade que acompanha um evento de ponta a ponta e um teste de caos que prova que nenhum evento aceito se perde.
 
 [Read in English](README.md)
 
 ![Painel: uma entrega que falhou duas vezes e depois deu certo](docs/images/dashboard.png)
 
 _O painel mostra cada tentativa de uma entrega, com o status HTTP, a duração e a resposta._
+
+## O que ele demonstra
+
+- **Uma garantia de entrega que sobrevive a quedas.** A API grava o evento, as entregas e uma linha de outbox numa transação; o relay publica a outbox no RabbitMQ; o carteiro registra cada tentativa e agenda a próxima na mesma transação. Duplicatas são descartadas pelo número da tentativa, e o destino recebe um `webhook-id` estável para deduplicar.
+- **Novas tentativas sem temporizadores.** Seis tentativas em cerca de 8h36, por filas quorum do RabbitMQ com TTL que voltam para a fila principal, e depois a DLQ. Um disjuntor e um limite de envio por endpoint impedem que um cliente com problema atrase os outros.
+- **Segurança onde webhooks costumam errar.** Assinatura Standard Webhooks com rotação de segredo, proteção contra SSRF que fixa o IP validado (sem DNS rebinding), API keys guardadas como hash e segredos dos endpoints criptografados.
+- **Operação.** Imagens multi-arch varridas pelo Trivy, k3s com Kustomize, Pod Security `restricted` e NetworkPolicies, Argo CD sincronizando da `main`, alertas do Prometheus com runbooks, traces que atravessam a fila e um backup diário com a restauração testada no CI.
+- **Provas, não promessas.** Testes de integração com Postgres e RabbitMQ reais, um teste Playwright do painel, capacidade medida, um teste de caos em cada pull request e o postmortem de um bug que esse teste encontrou.
+
+## Provado sob caos
+
+O `pnpm chaos` publica 10 mil eventos enquanto derruba o carteiro, o relay, o RabbitMQ, um pod da API e o Postgres, e depois confere cada evento. A última rodada completa ([docs/chaos.md](docs/chaos.md)):
+
+| Destino  | Comportamento                      | Entregas | Entregues | Mortas (na DLQ) |
+| -------- | ---------------------------------- | -------- | --------- | --------------- |
+| `flaky`  | falha 10% das vezes                | 9.632    | 9.632     | 0               |
+| `outage` | fora do ar nos 2 primeiros minutos | 9.632    | 9.632     | 0               |
+| `broken` | sempre falha                       | 96       | 0         | 96              |
+
+Cada evento aceito está no banco exatamente uma vez, cada entrega terminou, e a casa de teste contou cada entrega bem-sucedida. No caminho, o teste encontrou três bugs reais, cada um corrigido no seu próprio pull request: entregas que nunca terminavam atrás de um disjuntor aberto, a API caindo quando o Postgres reiniciava e uma sonda de vida que matava o Postgres no meio da recuperação ([postmortem](docs/postmortems/2026-11-12-postgres-morto-na-recuperacao.md)).
+
+**Capacidade** num notebook ([docs/capacity.md](docs/capacity.md)): 200 eventos/s por 10 minutos com todas as primeiras tentativas dentro do SLO de 5 s, e cerca de 415 eventos/s de ingestão por processo da API.
+
+## Como funciona
+
+```mermaid
+flowchart LR
+    client([Cliente]) -- "POST /v1/events" --> api[API]
+    api -- "evento + entregas + outbox,<br/>numa transação" --> pg[(PostgreSQL)]
+    relay[Relay] -- lê a outbox --> pg
+    relay -- publica --> mq{{RabbitMQ}}
+    mq -- deliveries.ready --> worker[Carteiro]
+    worker -- POST assinado --> endpoint([Endpoint do cliente])
+    worker -- "tentativa + próxima,<br/>numa transação" --> pg
+    mq -. "filas de espera (TTL)" .-> mq
+    mq -. não entregues .-> dlq[(DLQ)]
+```
+
+O [docs/architecture.md](docs/architecture.md) percorre o caminho de um evento, por que nada se perde em cada passo, a política de entrega, a segurança e o desenho no Kubernetes.
+
+## Experimente
+
+Com Docker, [k3d](https://k3d.io), `kubectl`, Node.js 26 e pnpm:
+
+```sh
+pnpm install
+pnpm k8s:up
+pnpm k8s:project demo
+```
+
+O painel fica em <http://hookline.localhost:8088>: entre com a API key que o último comando mostrou. O `pnpm k8s:obs` acrescenta o Grafana em <http://grafana.hookline.localhost:8088>. Para ver o teste de caos, construa as imagens e use o overlay `chaos`:
+
+```sh
+pnpm k8s:images
+pnpm k8s:up chaos
+pnpm chaos
+```
+
+O `pnpm k8s:down` apaga o cluster. As seções abaixo cobrem rodar cada processo à mão, a stack no compose e todos os comandos.
+
+## Documentação
+
+|                                           |                                                                                 |
+| ----------------------------------------- | ------------------------------------------------------------------------------- |
+| [Arquitetura](docs/architecture.md)       | componentes, o caminho de um evento, política de entrega, implantação           |
+| [Decisões de arquitetura](docs/adr)       | 15 ADRs, do RabbitMQ em vez do Kafka à falta de produção pública                |
+| [Teste de caos](docs/chaos.md)            | a rodada, a prova e o que ela encontrou                                         |
+| [Capacidade](docs/capacity.md)            | testes de carga, gargalos e SLOs revisados                                      |
+| [Runbooks](docs/runbooks/README.md)       | o que fazer em cada alerta, Postgres ou RabbitMQ fora, voltar versão, restaurar |
+| [Postmortems](docs/postmortems/README.md) | incidentes, escritos sem culpados                                               |
+
+**Situação:** concluído como projeto de portfólio. Um deploy público numa VPS da Oracle Cloud estava planejado e saiu do caminho quando não foi possível provisionar a instância; a demonstração roda no k3d, o mesmo k3s, com os mesmos manifestos ([ADR 15](docs/adr/0015-sem-producao-publica.md)).
 
 ## Requisitos
 
@@ -149,7 +221,7 @@ Crie um projeto na stack em execução com `docker compose --profile app run --r
 
 ## Rodando no Kubernetes
 
-A mesma stack roda num cluster Kubernetes local: o k3s, a distribuição que a VPS de produção vai usar, dentro do Docker pelo [k3d](https://k3d.io). Precisa do `k3d` e do `kubectl`.
+A mesma stack roda num cluster Kubernetes local: o k3s, a distribuição que a VPS de produção planejada usaria, dentro do Docker pelo [k3d](https://k3d.io). Precisa do `k3d` e do `kubectl`.
 
 ```sh
 pnpm k8s:up
