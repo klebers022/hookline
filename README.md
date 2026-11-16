@@ -1,57 +1,57 @@
 # Hookline
 
-Reliable webhook delivery. A client publishes an event once; Hookline delivers it to every subscribed endpoint at least once, or moves it to a dead-letter queue, and keeps an auditable record of every attempt.
+Entrega confiável de webhooks. O cliente publica um evento uma vez; o Hookline o entrega a cada endpoint inscrito pelo menos uma vez, ou o move para uma dead-letter queue, e guarda um registro auditável de cada tentativa.
 
-A portfolio project about messaging, reliability and operations: a transactional outbox, retries through RabbitMQ wait queues, Kubernetes with GitOps, observability that follows one event end to end, and a chaos test that proves no accepted event is lost.
+Um projeto de portfólio sobre mensageria, confiabilidade e operação: outbox transacional, novas tentativas pelas filas de espera do RabbitMQ, Kubernetes com GitOps, observabilidade que acompanha um evento de ponta a ponta e um teste de caos que prova que nenhum evento aceito se perde.
 
-[Leia em português](README.pt-BR.md)
+[Read in English](README.en.md)
 
-![Dashboard: a delivery that failed twice and then succeeded](docs/images/dashboard.png)
+![Painel: uma entrega que falhou duas vezes e depois deu certo](docs/images/dashboard.png)
 
-_The dashboard shows every attempt of a delivery, with its HTTP status, duration and response._
+_O painel mostra cada tentativa de uma entrega, com o status HTTP, a duração e a resposta._
 
-## What it demonstrates
+## O que ele demonstra
 
-- **A delivery guarantee that survives crashes.** The API writes the event, its deliveries and an outbox row in one transaction; a relay publishes the outbox to RabbitMQ; the delivery worker records each attempt and schedules the next one in the same transaction. Duplicates are discarded by attempt number, and endpoints get a stable `webhook-id` to deduplicate.
-- **Retries without timers.** Six attempts over about 8h36, through RabbitMQ quorum queues with a TTL that dead-letter back to the ready queue, then a dead-letter queue. A circuit breaker and a rate limit per endpoint keep one broken customer from slowing the others.
-- **Security where webhooks get it wrong.** Standard Webhooks signatures with secret rotation, SSRF protection that pins the validated IP (no DNS rebinding), hashed API keys and encrypted endpoint secrets.
-- **Operations.** Multi-arch images scanned by Trivy, k3s with Kustomize, restricted Pod Security and network policies, Argo CD syncing from `main`, Prometheus alerts with runbooks, traces that cross the queue, and a nightly backup whose restore is tested in CI.
-- **Evidence, not claims.** Integration tests against real Postgres and RabbitMQ, a Playwright test of the dashboard, measured capacity, a chaos test in every pull request, and a postmortem of a bug that test found.
+- **Uma garantia de entrega que sobrevive a quedas.** A API grava o evento, as entregas e uma linha de outbox numa transação; o relay publica a outbox no RabbitMQ; o carteiro registra cada tentativa e agenda a próxima na mesma transação. Duplicatas são descartadas pelo número da tentativa, e o destino recebe um `webhook-id` estável para deduplicar.
+- **Novas tentativas sem temporizadores.** Seis tentativas em cerca de 8h36, por filas quorum do RabbitMQ com TTL que voltam para a fila principal, e depois a DLQ. Um disjuntor e um limite de envio por endpoint impedem que um cliente com problema atrase os outros.
+- **Segurança onde webhooks costumam errar.** Assinatura Standard Webhooks com rotação de segredo, proteção contra SSRF que fixa o IP validado (sem DNS rebinding), API keys guardadas como hash e segredos dos endpoints criptografados.
+- **Operação.** Imagens multi-arch varridas pelo Trivy, k3s com Kustomize, Pod Security `restricted` e NetworkPolicies, Argo CD sincronizando da `main`, alertas do Prometheus com runbooks, traces que atravessam a fila e um backup diário com a restauração testada no CI.
+- **Provas, não promessas.** Testes de integração com Postgres e RabbitMQ reais, um teste Playwright do painel, capacidade medida, um teste de caos em cada pull request e o postmortem de um bug que esse teste encontrou.
 
-## Proven under chaos
+## Provado sob caos
 
-`pnpm chaos` publishes 10,000 events while it kills the delivery worker, the relay, RabbitMQ, one API pod and Postgres, then checks every event. The latest full run ([docs/chaos.md](docs/chaos.md)):
+O `pnpm chaos` publica 10 mil eventos enquanto derruba o carteiro, o relay, o RabbitMQ, um pod da API e o Postgres, e depois confere cada evento. A última rodada completa ([docs/chaos.md](docs/chaos.md)):
 
-| Destination | Behaviour                    | Deliveries | Succeeded | Dead (in the DLQ) |
-| ----------- | ---------------------------- | ---------- | --------- | ----------------- |
-| `flaky`     | fails 10% of the time        | 9,632      | 9,632     | 0                 |
-| `outage`    | down for the first 2 minutes | 9,632      | 9,632     | 0                 |
-| `broken`    | always fails                 | 96         | 0         | 96                |
+| Destino  | Comportamento                      | Entregas | Entregues | Mortas (na DLQ) |
+| -------- | ---------------------------------- | -------- | --------- | --------------- |
+| `flaky`  | falha 10% das vezes                | 9.632    | 9.632     | 0               |
+| `outage` | fora do ar nos 2 primeiros minutos | 9.632    | 9.632     | 0               |
+| `broken` | sempre falha                       | 96       | 0         | 96              |
 
-Every accepted event is in the database exactly once, every delivery ended, and the test receiver counted each successful one. Along the way the test found three real bugs, each fixed in its own pull request: deliveries that never ended behind an open circuit breaker, a Postgres restart crashing the API, and a liveness probe that killed Postgres mid-recovery ([postmortem](docs/postmortems/2026-11-12-postgres-morto-na-recuperacao.md)).
+Cada evento aceito está no banco exatamente uma vez, cada entrega terminou, e a casa de teste contou cada entrega bem-sucedida. No caminho, o teste encontrou três bugs reais, cada um corrigido no seu próprio pull request: entregas que nunca terminavam atrás de um disjuntor aberto, a API caindo quando o Postgres reiniciava e uma sonda de vida que matava o Postgres no meio da recuperação ([postmortem](docs/postmortems/2026-11-12-postgres-morto-na-recuperacao.md)).
 
-**Capacity** on a laptop ([docs/capacity.md](docs/capacity.md)): 200 events/s for 10 minutes with every first attempt within the 5 s SLO, and about 415 events/s of ingestion per API process.
+**Capacidade** num notebook ([docs/capacity.md](docs/capacity.md)): 200 eventos/s por 10 minutos com todas as primeiras tentativas dentro do SLO de 5 s, e cerca de 415 eventos/s de ingestão por processo da API.
 
-## How it works
+## Como funciona
 
 ```mermaid
 flowchart LR
-    client([Client]) -- "POST /v1/events" --> api[API]
-    api -- "event + deliveries + outbox,<br/>one transaction" --> pg[(PostgreSQL)]
-    relay[Relay] -- reads the outbox --> pg
-    relay -- publishes --> mq{{RabbitMQ}}
-    mq -- deliveries.ready --> worker[Delivery worker]
-    worker -- signed POST --> endpoint([Customer endpoint])
-    worker -- "attempt + next retry,<br/>one transaction" --> pg
-    mq -. "wait queues (TTL)" .-> mq
-    mq -. dead letters .-> dlq[(DLQ)]
+    client([Cliente]) -- "POST /v1/events" --> api[API]
+    api -- "evento + entregas + outbox,<br/>numa transação" --> pg[(PostgreSQL)]
+    relay[Relay] -- lê a outbox --> pg
+    relay -- publica --> mq{{RabbitMQ}}
+    mq -- deliveries.ready --> worker[Carteiro]
+    worker -- POST assinado --> endpoint([Endpoint do cliente])
+    worker -- "tentativa + próxima,<br/>numa transação" --> pg
+    mq -. "filas de espera (TTL)" .-> mq
+    mq -. não entregues .-> dlq[(DLQ)]
 ```
 
-[docs/architecture.md](docs/architecture.md) walks through an event's path, why nothing is lost at each step, the delivery policy, security and the Kubernetes layout (in Portuguese, like the other docs).
+O [docs/architecture.md](docs/architecture.md) percorre o caminho de um evento, por que nada se perde em cada passo, a política de entrega, a segurança e o desenho no Kubernetes.
 
-## Try it
+## Experimente
 
-With Docker, [k3d](https://k3d.io), `kubectl`, Node.js 26 and pnpm:
+Com Docker, [k3d](https://k3d.io), `kubectl`, Node.js 26 e pnpm:
 
 ```sh
 pnpm install
@@ -59,7 +59,7 @@ pnpm k8s:up
 pnpm k8s:project demo
 ```
 
-The dashboard is at <http://hookline.localhost:8088>: sign in with the API key the last command printed. `pnpm k8s:obs` adds Grafana at <http://grafana.hookline.localhost:8088>. To watch the chaos test, build the images and use the `chaos` overlay:
+O painel fica em <http://hookline.localhost:8088>: entre com a API key que o último comando mostrou. O `pnpm k8s:obs` acrescenta o Grafana em <http://grafana.hookline.localhost:8088>. Para ver o teste de caos, construa as imagens e use o overlay `chaos`:
 
 ```sh
 pnpm k8s:images
@@ -67,28 +67,28 @@ pnpm k8s:up chaos
 pnpm chaos
 ```
 
-`pnpm k8s:down` deletes the cluster. The sections below cover running each process by hand, the compose stack and every command.
+O `pnpm k8s:down` apaga o cluster. As seções abaixo cobrem rodar cada processo à mão, a stack no compose e todos os comandos.
 
-## Documentation
+## Documentação
 
-|                                           |                                                                         |
-| ----------------------------------------- | ----------------------------------------------------------------------- |
-| [Architecture](docs/architecture.md)      | components, an event's path, delivery policy, deployment                |
-| [Architecture decisions](docs/adr)        | 15 ADRs, from RabbitMQ over Kafka to having no public production        |
-| [Chaos test](docs/chaos.md)               | the run, the proof and what it found                                    |
-| [Capacity](docs/capacity.md)              | load tests, bottlenecks and revised SLOs                                |
-| [Runbooks](docs/runbooks/README.md)       | what to do for each alert, Postgres or RabbitMQ down, rollback, restore |
-| [Postmortems](docs/postmortems/README.md) | incidents, written blameless                                            |
+|                                           |                                                                                 |
+| ----------------------------------------- | ------------------------------------------------------------------------------- |
+| [Arquitetura](docs/architecture.md)       | componentes, o caminho de um evento, política de entrega, implantação           |
+| [Decisões de arquitetura](docs/adr)       | 15 ADRs, do RabbitMQ em vez do Kafka à falta de produção pública                |
+| [Teste de caos](docs/chaos.md)            | a rodada, a prova e o que ela encontrou                                         |
+| [Capacidade](docs/capacity.md)            | testes de carga, gargalos e SLOs revisados                                      |
+| [Runbooks](docs/runbooks/README.md)       | o que fazer em cada alerta, Postgres ou RabbitMQ fora, voltar versão, restaurar |
+| [Postmortems](docs/postmortems/README.md) | incidentes, escritos sem culpados                                               |
 
-**Status:** complete as a portfolio project. A public deployment on an Oracle Cloud VPS was planned and dropped when the instance could not be provisioned; the demo runs on k3d, the same k3s, with the same manifests ([ADR 15](docs/adr/0015-sem-producao-publica.md)).
+**Situação:** concluído como projeto de portfólio. Um deploy público numa VPS da Oracle Cloud estava planejado e saiu do caminho quando não foi possível provisionar a instância; a demonstração roda no k3d, o mesmo k3s, com os mesmos manifestos ([ADR 15](docs/adr/0015-sem-producao-publica.md)).
 
-## Requirements
+## Requisitos
 
-- Node.js 26 (see `.nvmrc`)
-- pnpm, through Corepack (`corepack enable`)
-- Docker with Compose
+- Node.js 26 (veja `.nvmrc`)
+- pnpm, via Corepack (`corepack enable`)
+- Docker com Compose
 
-## Getting started
+## Como começar
 
 ```bash
 pnpm install
@@ -96,11 +96,11 @@ pnpm infra:up
 pnpm check
 ```
 
-`pnpm infra:up` starts PostgreSQL and RabbitMQ, bound to localhost only. The RabbitMQ management UI is at <http://localhost:15672>. `pnpm check` includes integration tests, which need Docker running.
+`pnpm infra:up` sobe o PostgreSQL e o RabbitMQ, acessíveis apenas pelo localhost. O painel de gerenciamento do RabbitMQ fica em <http://localhost:15672>. `pnpm check` inclui testes de integração, que precisam do Docker rodando.
 
-## Running locally
+## Como rodar localmente
 
-Create your local configuration, apply the migrations, and create a project. The API key is shown only once.
+Crie a configuração local, aplique as migrações e crie um projeto. A API key aparece uma única vez.
 
 ```bash
 cp .env.example .env
@@ -108,7 +108,7 @@ pnpm db:migrate
 pnpm project:create demo
 ```
 
-Run each process in its own terminal:
+Rode cada processo em um terminal próprio:
 
 ```bash
 pnpm dev:api
@@ -130,9 +130,9 @@ pnpm dev:receiver
 pnpm dev:web
 ```
 
-The dashboard is at <http://localhost:5173>: sign in with the API key that `pnpm project:create` printed (it is shown only once) to browse events, see every delivery attempt, retry failed deliveries and manage endpoints. It calls the API on its own origin, and Vite forwards `/v1` to the API. The key stays in the tab's memory, so reloading the page asks for it again.
+O painel fica em <http://localhost:5173>: entre com a API key que o `pnpm project:create` mostrou (ela aparece uma única vez) para ver os eventos e cada tentativa de entrega, reenviar entregas com falha e gerenciar os endpoints. Ele chama a API no próprio endereço, e o Vite repassa `/v1` para a API. A chave fica só na memória da aba, então recarregar a página pede a chave de novo.
 
-The API documentation is at <http://localhost:3000/docs>. To send a test webhook, register the test receiver as an endpoint and publish an event, replacing `<API_KEY>`:
+A documentação da API fica em <http://localhost:3000/docs>. Para enviar um webhook de teste, cadastre o receptor como endpoint e publique um evento, substituindo `<API_KEY>`:
 
 ```bash
 curl -X POST http://localhost:3000/v1/endpoints -H "Authorization: Bearer <API_KEY>" -H "Content-Type: application/json" -d '{"url":"http://127.0.0.1:4000/hooks","event_types":["payment.approved"]}'
@@ -142,61 +142,61 @@ curl -X POST http://localhost:3000/v1/endpoints -H "Authorization: Bearer <API_K
 curl -X POST http://localhost:3000/v1/events -H "Authorization: Bearer <API_KEY>" -H "Content-Type: application/json" -d '{"type":"payment.approved","payload":{"amount":4200}}'
 ```
 
-See what arrived at <http://localhost:4000/received>, and the history at `GET /v1/events/:id` and `GET /v1/deliveries/:id`.
+Veja o que chegou em <http://localhost:4000/received> e o histórico em `GET /v1/events/:id` e `GET /v1/deliveries/:id`.
 
-## Delivery policy
+## Política de entrega
 
-A delivery gets up to 6 attempts: one right away, then after 1 minute, 5 minutes, 30 minutes, 2 hours, and 6 hours. Any `2xx` response is a success. Any other response, a network error, or a 10-second timeout schedules the next attempt. Redirects are not followed.
+Uma entrega tem até 6 tentativas: uma imediata e outras depois de 1 minuto, 5 minutos, 30 minutos, 2 horas e 6 horas. Qualquer resposta `2xx` é sucesso. Qualquer outra resposta, erro de rede ou timeout de 10 segundos agenda a próxima tentativa. Redirects não são seguidos.
 
-- **`410 Gone`:** disables the endpoint and ends the delivery.
-- **Disabled or deleted endpoint:** ends the delivery when its next attempt comes up.
-- **Exhausted delivery:** gets the `dead` status and a message in `deliveries.dlq`.
-- **Schedule over while the circuit is open:** a delivery waiting on an open circuit (below) still ends when its schedule does, about 8 h 36 min after the event, with a last attempt recorded as `DEADLINE_EXCEEDED` and no call to the endpoint.
-- **Manual retry:** `POST /v1/deliveries/:id/retry` queues one more attempt for a `dead` delivery whose endpoint is active.
+- **`410 Gone`:** desativa o endpoint e encerra a entrega.
+- **Endpoint desativado ou removido:** encerra a entrega quando chega a hora da próxima tentativa.
+- **Entrega esgotada:** recebe o status `dead` e uma mensagem em `deliveries.dlq`.
+- **Calendário vencido com o circuito aberto:** uma entrega esperando um circuito aberto (abaixo) termina mesmo assim quando o calendário acaba, cerca de 8h36 depois do evento, com uma última tentativa registrada como `DEADLINE_EXCEEDED` e sem chamar o endpoint.
+- **Reenvio manual:** `POST /v1/deliveries/:id/retry` agenda mais uma tentativa para uma entrega `dead` cujo endpoint esteja ativo.
 
-Delivery is at least once, so an endpoint can receive the same event more than once. Use the `webhook-id` header, which stays the same across attempts, to discard repeats.
+A entrega é "pelo menos uma vez", então um endpoint pode receber o mesmo evento mais de uma vez. Use o header `webhook-id`, que não muda entre as tentativas, para descartar repetições.
 
-`RETRY_DELAYS` changes the schedule, for example `2s,2s,2s,2s,2s` for a quick local test.
+`RETRY_DELAYS` muda o calendário, por exemplo `2s,2s,2s,2s,2s` para um teste local rápido.
 
-### Endpoint isolation
+### Isolamento entre endpoints
 
-- **Circuit breaker:** after 5 failures in a row, Hookline stops calling the endpoint for 5 minutes (`CIRCUIT_OPEN_SECONDS`). Deliveries wait without spending attempts, up to the end of their schedule. The endpoint's `consecutive_failures` and `circuit_open_until` show its state. A success, activating the endpoint again, or changing its URL closes the circuit.
-- **Rate limit:** each worker sends at most 50 webhooks per second to each endpoint, set with `ENDPOINT_RATE_LIMIT_PER_SECOND`. Deliveries over the limit wait one second, without spending attempts.
+- **Circuit breaker:** depois de 5 falhas seguidas, o Hookline deixa de chamar o endpoint por 5 minutos (`CIRCUIT_OPEN_SECONDS`). As entregas esperam sem gastar tentativas, até o fim do calendário. Os campos `consecutive_failures` e `circuit_open_until` do endpoint mostram o estado. Um sucesso, a reativação do endpoint ou a troca da URL fecham o circuito.
+- **Limite de envios:** cada worker envia no máximo 50 webhooks por segundo a cada endpoint, valor definido em `ENDPOINT_RATE_LIMIT_PER_SECOND`. As entregas acima do limite esperam um segundo, sem gastar tentativas.
 
-## Publishing safely
+## Publicação segura
 
-- **Repeated requests:** send an `Idempotency-Key` header on `POST /v1/events` to retry a request safely. The same key and content return the original event with `idempotent-replayed: true`. The same key with different content returns `409`.
-- **Rate limit:** each project can make 6,000 API requests per minute by default, set with `RATE_LIMIT_PER_MINUTE`. The count is per API process. Past the limit, the API returns `429` with a `retry-after` header.
-- **Secret rotation:** `POST /v1/endpoints/:id/rotate-secret` returns a new secret, shown only once. For 24 hours, webhooks carry signatures from both the old and the new secret, so you can switch without rejecting any. Rotating again within that period ends the older secret at once.
+- **Pedidos repetidos:** envie o header `Idempotency-Key` em `POST /v1/events` para repetir um pedido com segurança. A mesma chave com o mesmo conteúdo devolve o evento original com `idempotent-replayed: true`. A mesma chave com conteúdo diferente devolve `409`.
+- **Limite de pedidos:** cada projeto pode fazer 6.000 pedidos por minuto à API por padrão, valor definido em `RATE_LIMIT_PER_MINUTE`. A contagem é por processo da API. Acima do limite, a API devolve `429` com o header `retry-after`.
+- **Troca de segredo:** `POST /v1/endpoints/:id/rotate-secret` devolve um novo segredo, mostrado uma única vez. Durante 24 horas, os webhooks levam as assinaturas do segredo antigo e do novo, para você trocar sem rejeitar nenhum. Uma nova troca nesse período encerra o segredo mais antigo na hora.
 
-## Endpoint URL protection
+## Proteção das URLs dos endpoints
 
-Hookline calls URLs chosen by its clients, so it blocks requests to internal addresses (SSRF):
+O Hookline chama URLs escolhidas pelos clientes, então bloqueia pedidos para endereços internos (SSRF):
 
-- **Allowed URLs:** `https` only, without credentials.
-- **Blocked addresses:** private networks, loopback, link-local (including the cloud metadata address `169.254.169.254`), and other reserved ranges, in IPv4 and IPv6.
-- **At registration:** the API resolves the hostname and rejects the URL if any address is blocked.
-- **On every connection:** the worker checks again and connects to the address it checked, so a DNS answer that changes later cannot reach an internal address. A blocked attempt is recorded with the `SSRF_BLOCKED` error.
+- **URLs aceitas:** apenas `https`, sem usuário e senha.
+- **Endereços bloqueados:** redes privadas, loopback, link-local (incluindo o endereço de metadados da nuvem, `169.254.169.254`) e outras faixas reservadas, em IPv4 e IPv6.
+- **No cadastro:** a API resolve o hostname e recusa a URL se algum endereço for bloqueado.
+- **Em cada conexão:** o worker confere de novo e se conecta ao endereço que conferiu, então uma resposta de DNS que mude depois não alcança um endereço interno. Uma tentativa bloqueada fica registrada com o erro `SSRF_BLOCKED`.
 
-`ALLOW_PRIVATE_TARGETS=true` turns this off, so local development can use the test receiver at `http://127.0.0.1`. It is off unless set, and must stay off wherever third parties can register endpoints.
+`ALLOW_PRIVATE_TARGETS=true` desliga essa proteção, para o desenvolvimento local usar o receptor de teste em `http://127.0.0.1`. Ela fica desligada se não for definida e deve continuar assim onde terceiros podem cadastrar endpoints.
 
-## Shutdown
+## Encerramento
 
-On `SIGINT` or `SIGTERM`, each process finishes its work in progress before exiting:
+Ao receber `SIGINT` ou `SIGTERM`, cada processo termina o trabalho em andamento antes de sair:
 
-- **API:** stops accepting connections and answers the requests in progress.
-- **Relay:** finishes the batch it is publishing.
-- **Delivery worker:** stops taking messages and waits up to 15 seconds for the deliveries in progress. Messages still running at that point return to the queue, and the duplicate check keeps a recorded attempt from repeating.
+- **API:** deixa de aceitar conexões e responde os pedidos em andamento.
+- **Relay:** termina o lote que está publicando.
+- **Worker de entrega:** deixa de pegar mensagens e espera até 15 segundos pelas entregas em andamento. As mensagens que ainda estiverem em execução voltam para a fila, e a checagem de duplicatas impede que uma tentativa já registrada se repita.
 
-A second signal, or 30 seconds without finishing, ends the process at once.
+Um segundo sinal, ou 30 segundos sem terminar, encerra o processo na hora.
 
-## Production build
+## Build de produção
 
-`pnpm build` compiles every package to `dist/`, and `node apps/worker/dist/main-deliver.js` runs a process without `tsx`. Each package exports its compiled `dist/` by default and its TypeScript source under the `@hookline/source` condition, which the `dev` scripts, the type checker, and the tests use, so development needs no build.
+`pnpm build` compila cada pacote para `dist/`, e `node apps/worker/dist/main-deliver.js` roda um processo sem `tsx`. Cada pacote exporta por padrão o `dist/` compilado e, sob a condição `@hookline/source`, o código TypeScript, usado pelos scripts `dev`, pela checagem de tipos e pelos testes. Assim, o desenvolvimento não precisa de build.
 
-`pnpm db:migrate` reads `db/migrations` from the repository. Set `MIGRATIONS_DIR` to read them from elsewhere.
+`pnpm db:migrate` lê `db/migrations` do repositório. Defina `MIGRATIONS_DIR` para ler de outra pasta.
 
-## Running in containers
+## Rodando em contêineres
 
 ```sh
 pnpm stack:up
@@ -205,23 +205,23 @@ pnpm stack:e2e
 pnpm stack:down
 ```
 
-`pnpm stack:up` builds the images from the `Dockerfile` and starts the whole stack: migrations, API at <http://localhost:3000>, relay, delivery worker, test receiver at <http://localhost:4000>, which endpoints reach as `http://test-receiver:4000/hooks`, and the dashboard at <http://localhost:8080>. It uses the same ports as the `pnpm dev:*` scripts, so run one or the other. `pnpm stack:smoke` publishes an event end to end and stops the delivery worker during a slow delivery to check that the delivery is still recorded. `pnpm stack:e2e` runs the Playwright test of the dashboard (install its browser once with `pnpm --filter @hookline/e2e exec playwright install chromium`): a delivery fails, and the test finds it, reads its attempts, enables its endpoint again and retries it until it succeeds. It needs short retry delays, so start the stack with `RETRY_DELAYS=1s,1s,1s,1s,1s pnpm stack:up`. CI runs both on every pull request.
+`pnpm stack:up` constrói as imagens a partir do `Dockerfile` e sobe a stack inteira: migrações, API em <http://localhost:3000>, relay, worker de entrega, receptor de teste em <http://localhost:4000>, que os endpoints acessam como `http://test-receiver:4000/hooks`, e o painel em <http://localhost:8080>. Usa as mesmas portas dos scripts `pnpm dev:*`, então rode um ou outro. `pnpm stack:smoke` publica um evento de ponta a ponta e para o worker de entrega durante uma entrega lenta, para conferir que ela ainda é registrada. `pnpm stack:e2e` roda o teste Playwright do painel (instale o navegador uma vez com `pnpm --filter @hookline/e2e exec playwright install chromium`): uma entrega falha, e o teste a encontra, lê as tentativas, reativa o endpoint e a reenvia até dar certo. Ele precisa de esperas curtas, então suba a stack com `RETRY_DELAYS=1s,1s,1s,1s,1s pnpm stack:up`. O CI roda os dois em todo pull request.
 
-There are four images. The three Node ones run as the unprivileged `node` user with `node` as process 1:
+São quatro imagens. As três de Node rodam com o usuário sem privilégios `node` e com o `node` como processo 1:
 
-| Image                    | Command                                                                                                                |
+| Imagem                   | Comando                                                                                                                |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `hookline-api`           | `node dist/server.js` by default; also `node dist/scripts/migrate.js` and `node dist/scripts/create-project.js <name>` |
-| `hookline-worker`        | `node dist/main-deliver.js` by default; `node dist/main-relay.js` for the relay                                        |
+| `hookline-api`           | `node dist/server.js` por padrão; também `node dist/scripts/migrate.js` e `node dist/scripts/create-project.js <nome>` |
+| `hookline-worker`        | `node dist/main-deliver.js` por padrão; `node dist/main-relay.js` para o relay                                         |
 | `hookline-test-receiver` | `node dist/main.js`                                                                                                    |
 
-`hookline-web` is nginx running as an unprivileged user on port 8080. It serves the dashboard and forwards `/v1` to `API_URL` (`http://api:3000` by default), so the browser sees a single origin and the API needs no CORS. Its responses carry a strict Content Security Policy, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
+A `hookline-web` é um nginx rodando com usuário sem privilégios na porta 8080. Ela serve o painel e repassa `/v1` para `API_URL` (`http://api:3000` por padrão), então o navegador vê uma única origem e a API não precisa de CORS. As respostas levam uma Content Security Policy restrita, `X-Content-Type-Options: nosniff` e `Referrer-Policy: no-referrer`.
 
-Create a project in the running stack with `docker compose --profile app run --rm api node dist/scripts/create-project.js <name>`. It prints the project's API key once, which is what the dashboard asks for; only a hash of it is stored.
+Crie um projeto na stack em execução com `docker compose --profile app run --rm api node dist/scripts/create-project.js <nome>`. Ele mostra a API key do projeto uma única vez, e é ela que o painel pede; o banco guarda só o hash.
 
-## Running in Kubernetes
+## Rodando no Kubernetes
 
-The same stack runs in a local Kubernetes cluster: k3s, the distribution the planned production VPS would have used, inside Docker through [k3d](https://k3d.io). It needs `k3d` and `kubectl`.
+A mesma stack roda num cluster Kubernetes local: o k3s, a distribuição que a VPS de produção planejada usaria, dentro do Docker pelo [k3d](https://k3d.io). Precisa do `k3d` e do `kubectl`.
 
 ```sh
 pnpm k8s:up
@@ -232,17 +232,17 @@ pnpm k8s:argocd
 pnpm k8s:down
 ```
 
-- `pnpm k8s:up` creates the `hookline` cluster and a Secret with random passwords and an encryption key, which never go to Git. It then applies `infra/k8s/overlays/local`. The dashboard is at <http://hookline.localhost:8088>; through it, `/v1` reaches the API. Port 8088 keeps it clear of the compose stack.
-- `pnpm k8s:project <name>` creates a project and prints its API key.
-- `pnpm k8s:smoke` runs the smoke test against the cluster. It deletes the delivery worker's pod during a slow delivery, and checks that the network policies let the API reach Postgres and keep other pods out.
-- `pnpm k8s:obs` adds Prometheus, Tempo, Loki, Alloy and Grafana, with the same alerts and dashboard as compose, at <http://grafana.hookline.localhost:8088>. `pnpm k8s:obs-check` checks that they see the app.
-- `pnpm k8s:argocd` installs Argo CD, at <http://argocd.hookline.localhost:8088>, read-only without a login. From then on the cluster syncs from `main`, and a change made by hand is undone.
+- `pnpm k8s:up` cria o cluster `hookline` e um Secret com senhas e uma chave de criptografia aleatórias, que nunca vão para o Git. Depois aplica o `infra/k8s/overlays/local`. O painel fica em <http://hookline.localhost:8088>, e por ele o `/v1` chega à API. A porta 8088 evita conflito com a stack do compose.
+- `pnpm k8s:project <nome>` cria um projeto e mostra a API key dele.
+- `pnpm k8s:smoke` roda o teste de fumaça contra o cluster. Ele apaga o pod do worker de entrega durante uma entrega lenta e confere que as NetworkPolicies deixam a API alcançar o Postgres e barram outros pods.
+- `pnpm k8s:obs` acrescenta Prometheus, Tempo, Loki, Alloy e Grafana, com os mesmos alertas e painel do compose, em <http://grafana.hookline.localhost:8088>. O `pnpm k8s:obs-check` confere que eles enxergam o app.
+- `pnpm k8s:argocd` instala o Argo CD, em <http://argocd.hookline.localhost:8088>, só para leitura sem login. A partir daí, o cluster sincroniza a partir da `main`, e uma mudança feita à mão é desfeita.
 
-The manifests are in `infra/k8s`: a Kustomize base, a `local` overlay and a `ci` overlay. Every pod has readiness and liveness probes and memory limits. Every pod runs under the `restricted` Pod Security standard: no root, a read-only root filesystem, no capabilities. Network policies deny incoming traffic unless allowed: only Hookline's processes reach Postgres, and only the relay and the delivery worker reach RabbitMQ. Retention runs as a daily CronJob. The `k8s` CI job does all of this on a k3d cluster, with the images built from the pull request.
+Os manifestos ficam em `infra/k8s`: uma base Kustomize e os overlays `local` e `ci`. Todo pod tem probes de prontidão e de vida e limites de memória. Todo pod roda no padrão de Pod Security `restricted`: sem root, com o disco raiz só de leitura e sem _capabilities_. As NetworkPolicies negam o tráfego de entrada que não for liberado: só os processos do Hookline chegam ao Postgres, e só o relay e o worker de entrega chegam ao RabbitMQ. A retenção roda como um CronJob diário. O job `k8s` do CI faz tudo isso num cluster k3d, com as imagens construídas no pull request.
 
-To deploy a newer `main`, run `pnpm k8s:bump`. It checks that the images of the latest commit on `main` are published and pins `overlays/local` to them. Merge that change through a pull request and Argo CD rolls it out; reverting the commit rolls it back. See ADRs [12](docs/adr/0012-kubernetes-com-k3s.md) and [13](docs/adr/0013-gitops-com-argo-cd.md).
+Para colocar uma `main` mais nova no cluster, rode `pnpm k8s:bump`. Ele confere que as imagens do último commit da `main` foram publicadas e fixa o `overlays/local` nelas. Mescle essa mudança por pull request e o Argo CD faz o rollout; reverter o commit volta a versão. Veja as ADRs [12](docs/adr/0012-kubernetes-com-k3s.md) e [13](docs/adr/0013-gitops-com-argo-cd.md).
 
-## Observability
+## Observabilidade
 
 ```sh
 pnpm stack:up
@@ -251,69 +251,69 @@ pnpm obs:reload
 pnpm obs:down
 ```
 
-Each process serves `/metrics` (Prometheus format), `/healthz` and `/readyz` on an ops port of its own, which is never the API's public port: `METRICS_PORT`, 9464 in containers, and 9464, 9465 and 9466 for the API, the relay and the delivery worker under `pnpm dev:*`. It listens on `127.0.0.1` unless `METRICS_HOST` says otherwise.
+Cada processo serve `/metrics` (formato do Prometheus), `/healthz` e `/readyz` numa porta de operação própria, que nunca é a porta pública da API: `METRICS_PORT`, 9464 nos contêineres, e 9464, 9465 e 9466 para a API, o relay e o worker de entrega com `pnpm dev:*`. Ela escuta em `127.0.0.1`, a menos que `METRICS_HOST` diga outro endereço.
 
-`pnpm obs:up` starts Prometheus at <http://localhost:9090>, Tempo for traces, Loki and Alloy for logs, and Grafana at <http://localhost:3001>, which opens on the "Hookline – visão geral" dashboard. Prometheus scrapes the containers started by `pnpm stack:up` and RabbitMQ's queue metrics. The dashboard and data sources are provisioned from `infra/observability`, so edit the JSON there rather than in the UI. After changing the dashboard or the alert rules, run `pnpm obs:reload`: Prometheus never rereads its rules on its own, and on Docker Desktop for Windows Grafana does not notice a file changed on the Windows side.
+`pnpm obs:up` sobe o Prometheus em <http://localhost:9090>, o Tempo para os traces, o Loki e o Alloy para os logs e o Grafana em <http://localhost:3001>, que abre no painel "Hookline – visão geral". O Prometheus coleta os contêineres de `pnpm stack:up` e as métricas das filas do RabbitMQ. O painel e as fontes de dados são provisionados a partir de `infra/observability`; para mudar o painel, edite o JSON ali, não na interface. Depois de mudar o painel ou as regras de alerta, rode `pnpm obs:reload`: o Prometheus nunca relê as regras sozinho, e no Docker Desktop para Windows o Grafana não percebe um arquivo alterado do lado do Windows.
 
-| Metric                                                                           | What it shows                                                            |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `hookline_http_request_duration_seconds`                                         | API latency by method, route and status class                            |
-| `hookline_events_accepted_total`, `hookline_deliveries_created_total`            | New events and the deliveries they fanned out to                         |
-| `hookline_outbox_pending`, `hookline_outbox_oldest_pending_age_seconds`          | Rows waiting for the relay; a growing age means it stopped               |
-| `hookline_outbox_published_total`                                                | Messages published, by kind: `ready`, `wait` or `dead`                   |
-| `hookline_delivery_attempts_total`, `hookline_delivery_attempt_duration_seconds` | Attempts by outcome: `succeeded`, `retry`, `dead` or `endpoint_disabled` |
-| `hookline_delivery_first_attempt_delay_seconds`                                  | Time from accepting an event to its first attempt, the delivery SLO      |
-| `hookline_delivery_deferrals_total`                                              | Messages put back without spending an attempt, by reason                 |
-| `hookline_endpoints_circuit_open`                                                | Endpoints with an open circuit breaker                                   |
+| Métrica                                                                          | O que mostra                                                                  |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `hookline_http_request_duration_seconds`                                         | Latência da API por método, rota e classe de status                           |
+| `hookline_events_accepted_total`, `hookline_deliveries_created_total`            | Eventos novos e as entregas geradas pelo fan-out                              |
+| `hookline_outbox_pending`, `hookline_outbox_oldest_pending_age_seconds`          | Linhas esperando o relay; idade crescendo significa que ele parou             |
+| `hookline_outbox_published_total`                                                | Mensagens publicadas por tipo: `ready`, `wait` ou `dead`                      |
+| `hookline_delivery_attempts_total`, `hookline_delivery_attempt_duration_seconds` | Tentativas por resultado: `succeeded`, `retry`, `dead` ou `endpoint_disabled` |
+| `hookline_delivery_first_attempt_delay_seconds`                                  | Tempo entre aceitar o evento e a 1ª tentativa, o SLO de entrega               |
+| `hookline_delivery_deferrals_total`                                              | Mensagens adiadas sem gastar tentativa, por motivo                            |
+| `hookline_endpoints_circuit_open`                                                | Endpoints com o disjuntor aberto                                              |
 
-Labels only take values from small, fixed sets. Per-endpoint detail stays in the database.
+Os rótulos só assumem valores de conjuntos pequenos e fixos. O detalhe por endpoint fica no banco.
 
 ### Traces
 
-The API, relay and delivery worker send OpenTelemetry traces over OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, which the compose stack does, pointing at Tempo. Without it, tracing does not load. The images load it with `node --import @hookline/shared/tracing` before the app, which traces HTTP requests, PostgreSQL queries and the webhook POST, and adds `trace_id` and `span_id` to log lines.
+A API, o relay e o worker de entrega enviam traces do OpenTelemetry por OTLP quando `OTEL_EXPORTER_OTLP_ENDPOINT` está definida, o que o compose faz, apontando para o Tempo. Sem ela, o tracing nem é carregado. As imagens o carregam com `node --import @hookline/shared/tracing` antes do app, que passa a rastrear pedidos HTTP, consultas ao PostgreSQL e o POST do webhook, e a incluir `trace_id` e `span_id` nas linhas de log.
 
-A trace crosses the outbox and the queue by hand: each outbox row stores the W3C trace context of the code that wrote it (`outbox.trace_context`), the relay publishes as a child of it and sends its own context in the message headers, and the delivery worker continues from there. So one trace shows `POST /v1/events`, the database writes, the publish, the delivery attempt and the endpoint's response. A retry, which can come hours later, starts a new trace with a link to the previous attempt's. In Grafana, open Explore, pick Tempo and search, for example, `{ name = "POST /v1/events" }`.
+O trace atravessa a outbox e a fila à mão: cada linha da outbox guarda o contexto W3C de quem a escreveu (`outbox.trace_context`), o relay publica como filho dele e envia o próprio contexto nos headers da mensagem, e o worker de entrega continua dali. Assim, um único trace mostra o `POST /v1/events`, as gravações no banco, a publicação, a tentativa de entrega e a resposta do endpoint. Uma nova tentativa, que pode vir horas depois, abre um trace novo com um link para o da tentativa anterior. No Grafana, abra o Explore, escolha o Tempo e busque, por exemplo, `{ name = "POST /v1/events" }`.
 
-Webhook requests carry a `traceparent` header, so an endpoint that traces can join the same trace.
+As requisições de webhook levam o header `traceparent`, então um endpoint que também usa tracing pode entrar no mesmo trace.
 
 ### Logs
 
-The processes write JSON lines to stdout and nothing else. Alloy reads the containers' logs through the Docker socket and pushes them to Loki, labelled by `service` and `level`. `trace_id` and `span_id` travel as structured metadata rather than labels, since one stream per trace would overwhelm Loki's index. In Grafana, a log line's details link to its trace in Tempo, and a span in Tempo links back to the lines its trace wrote. The dashboard's last row shows warnings and errors.
+Os processos só escrevem linhas JSON no stdout. O Alloy lê os logs dos contêineres pelo socket do Docker e os envia ao Loki, com os rótulos `service` e `level`. `trace_id` e `span_id` vão como metadados estruturados, não como rótulos, porque um stream por trace sobrecarregaria o índice do Loki. No Grafana, os detalhes de uma linha de log levam ao trace dela no Tempo, e um span no Tempo leva de volta às linhas que o trace escreveu. A última linha do painel mostra os avisos e erros.
 
-### Alerts
+### Alertas
 
-`infra/observability/prometheus/alerts.yml` holds the alert rules, and `pnpm obs:test-rules` runs their unit tests with promtool, as CI does:
+As regras de alerta ficam em `infra/observability/prometheus/alerts.yml`, e `pnpm obs:test-rules` roda os testes delas com o promtool, como o CI faz:
 
-| Alert                      | Fires when                                                                                                |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `HooklineOutboxStuck`      | The oldest pending outbox row is over 60 s old for 2 minutes                                              |
-| `HooklineDeadLetters`      | A delivery reached the DLQ in the last 10 minutes                                                         |
-| `HooklineFirstAttemptSlow` | The p99 delay to the first attempt is over 5 s for 5 minutes (SLO)                                        |
-| `HooklineHighFailureRate`  | Over half the deliveries failed or waited on an open circuit breaker in the last 5 minutes, for 2 minutes |
-| `HooklineProcessDown`      | Prometheus cannot scrape a process for a minute                                                           |
+| Alerta                     | Dispara quando                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `HooklineOutboxStuck`      | A linha pendente mais antiga da outbox passa de 60 s por 2 minutos                                     |
+| `HooklineDeadLetters`      | Uma entrega chegou à DLQ nos últimos 10 minutos                                                        |
+| `HooklineFirstAttemptSlow` | O p99 do atraso até a 1ª tentativa passa de 5 s por 5 minutos (SLO)                                    |
+| `HooklineHighFailureRate`  | Mais da metade das entregas falhou ou esperou um disjuntor aberto nos últimos 5 minutos, por 2 minutos |
+| `HooklineProcessDown`      | O Prometheus não consegue coletar um processo por um minuto                                            |
 
-Nothing sends notifications yet: firing alerts show on Prometheus's Alerts page and in the dashboard. Each alert links to its runbook (`runbook_url`), in [docs/runbooks](docs/runbooks/README.md) (in Portuguese), which also covers Postgres or RabbitMQ being down and rolling back a version. Incidents are written up in [docs/postmortems](docs/postmortems/README.md).
+Ainda não há envio de avisos: os alertas disparados aparecem na página Alerts do Prometheus e no painel. Cada alerta aponta para o seu runbook (`runbook_url`), em [docs/runbooks](docs/runbooks/README.md), que também cobre o Postgres ou o RabbitMQ fora do ar e como voltar uma versão. Os incidentes ficam registrados em [docs/postmortems](docs/postmortems/README.md).
 
-## Retention
+## Retenção
 
 ```sh
 pnpm db:retention
 docker compose --profile app run --rm api node dist/scripts/retention.js
 ```
 
-The retention script deletes outbox rows published over 7 days ago (`RETENTION_OUTBOX_DAYS`) and events over 30 days old (`RETENTION_EVENT_DAYS`) whose deliveries have all ended, with their deliveries and attempts. It never deletes an event with a delivery still in progress, and it deletes in batches of 1,000 rows, each its own short transaction. Run it daily; in Kubernetes it becomes a CronJob.
+O script de retenção apaga as linhas da outbox publicadas há mais de 7 dias (`RETENTION_OUTBOX_DAYS`) e os eventos com mais de 30 dias (`RETENTION_EVENT_DAYS`) cujas entregas já terminaram, junto com as entregas e as tentativas. Ele nunca apaga um evento com entrega em andamento e apaga em lotes de 1.000 linhas, cada um numa transação curta. Rode-o uma vez por dia; no Kubernetes, ele vira um CronJob.
 
 ## Backup
 
 ```sh
 pnpm k8s:backup
 pnpm k8s:restore-test
-pnpm k8s:restore [hookline-<timestamp>.dump]
+pnpm k8s:restore [hookline-<data-hora>.dump]
 ```
 
-In Kubernetes, a CronJob runs `pg_dump` every night at 02:30 UTC, half an hour before retention, and `rclone` sends the copy to an S3-compatible store in the cluster (the Versity S3 Gateway), which keeps 7 days of copies. `k8s:backup` runs it now. `k8s:restore-test` takes a backup, restores it into a throwaway Postgres and compares every table's row count with the live database; the `k8s` CI job runs it after the chaos test. `k8s:restore` restores a copy over the live database, stopping the API, the relay and the delivery worker meanwhile: everything written after that copy is lost, so read [the restore runbook](docs/runbooks/restore.md) first. Why this design, and its limits (the copy lives in the same cluster; up to a day of data lost): [ADR 14](docs/adr/0014-backup-com-pg-dump-em-s3.md).
+No Kubernetes, um CronJob roda o `pg_dump` toda noite às 02:30 UTC, meia hora antes da retenção, e o `rclone` envia a cópia para um armazenamento compatível com S3 dentro do cluster (o Versity S3 Gateway), que guarda as cópias dos últimos 7 dias. O `k8s:backup` faz um backup na hora. O `k8s:restore-test` faz um backup, restaura num Postgres descartável e compara a contagem de linhas de cada tabela com o banco vivo; o job `k8s` do CI roda esse teste depois do teste de caos. O `k8s:restore` restaura uma cópia sobre o banco vivo, parando a API, o relay e o carteiro enquanto isso: tudo o que foi gravado depois da cópia se perde, então leia antes [o runbook de restauração](docs/runbooks/restore.md). Por que assim, e os limites (a cópia fica no mesmo cluster; até um dia de dados perdidos): [ADR 14](docs/adr/0014-backup-com-pg-dump-em-s3.md).
 
-## Load tests
+## Testes de carga
 
 ```sh
 pnpm stack:up
@@ -322,14 +322,14 @@ pnpm load:ingest
 pnpm load:e2e
 ```
 
-The k6 scenarios in `load-tests/` run in a container inside the compose network and push their numbers to Prometheus, so the dashboard's "Carga (k6)" row shows the load next to the stack's reaction. `scripts/load.mjs` raises the API and endpoint rate limits (`pnpm stack:up` restores them), creates a project with one endpoint on the test receiver, runs k6 and reports:
+Os cenários do k6 em `load-tests/` rodam num contêiner dentro da rede do compose e enviam os números ao Prometheus, então a linha "Carga (k6)" do painel mostra a carga ao lado da reação da stack. O `scripts/load.mjs` aumenta os limites de pedidos da API e de envio por endpoint (`pnpm stack:up` os restaura), cria um projeto com um endpoint na casa de teste, roda o k6 e relata:
 
-- **`load:ingest`** ramps the publish rate up to 800 events/s over 4 minutes (`MAX_RATE`, `RAMP`) and prints, every 15 seconds, the rate offered, the rate accepted and the API's p99.
-- **`load:e2e`** holds 200 events/s for 10 minutes (`RATE`, `DURATION`), waits for every delivery to end and checks in the database that each event has a finished delivery, with the delay to the first attempt against the 5 s SLO.
+- **`load:ingest`** sobe a taxa de publicação até 800 eventos/s em 4 minutos (`MAX_RATE`, `RAMP`) e mostra, a cada 15 segundos, a taxa oferecida, a aceita e o p99 da API.
+- **`load:e2e`** mantém 200 eventos/s por 10 minutos (`RATE`, `DURATION`), espera todas as entregas terminarem e confere no banco que cada evento tem uma entrega concluída, com o atraso até a 1ª tentativa comparado ao SLO de 5 s.
 
-`OTEL_SDK_DISABLED=true` before either command turns tracing off, to measure what it costs. The results are in [docs/capacity.md](docs/capacity.md).
+`OTEL_SDK_DISABLED=true` antes de qualquer um dos comandos desliga o tracing, para medir quanto ele custa. Os resultados estão em [docs/capacity.md](docs/capacity.md).
 
-## Chaos test
+## Teste de caos
 
 ```sh
 pnpm k8s:images
@@ -337,22 +337,22 @@ pnpm k8s:up chaos
 pnpm chaos
 ```
 
-`pnpm chaos` publishes 10,000 events at 50/s to three test destinations (one fails 10% of the time, one is down for the first part of the run, one never answers) and, while they flow, kills the delivery worker, the relay, RabbitMQ, one API pod and Postgres. Then it checks every event: each accepted one is in the database once, every delivery ended `succeeded` or `dead`, the test receiver got every successful one, and no outbox row is left. The `chaos` overlay shortens the retry schedule and the circuit breaker so a run takes about 10 minutes. The `k8s` CI job runs a 1,000-event version on every pull request. The result, with the dashboard during the run and the bugs it found, is in [docs/chaos.md](docs/chaos.md).
+O `pnpm chaos` publica 10 mil eventos a 50/s para três destinos de teste (um falha 10% das vezes, um fica fora do ar na primeira parte da rodada e um nunca responde) e, enquanto eles passam, derruba o carteiro, o relay, o RabbitMQ, um pod da API e o Postgres. Depois confere cada evento: cada um aceito está no banco uma vez, cada entrega terminou `succeeded` ou `dead`, a casa de teste recebeu cada entrega bem-sucedida e nenhuma linha da outbox ficou para trás. O overlay `chaos` encurta o calendário de tentativas e o disjuntor, para uma rodada levar cerca de 10 minutos. O job `k8s` do CI roda uma versão com 1.000 eventos em cada PR. O resultado, com o painel durante a rodada e os bugs que o teste encontrou, está em [docs/chaos.md](docs/chaos.md).
 
-## Published images
+## Imagens publicadas
 
-Every merge to `main` publishes the four images for `linux/amd64` and `linux/arm64`, tagged `sha-<commit>` and `main`, and a `v*` tag adds its version:
+Todo merge na `main` publica as quatro imagens para `linux/amd64` e `linux/arm64`, com as tags `sha-<commit>` e `main`, e uma tag `v*` acrescenta a versão:
 
 ```sh
 docker pull ghcr.io/klebers022/hookline-api:main
 ```
 
-Before publishing, Trivy scans each image and fails on a critical or high vulnerability that has a fix. Pull requests run the same scan without publishing, and the full report is in the repository's Security tab. Dependabot keeps the base image digest, the GitHub Actions and the npm packages up to date.
+Antes de publicar, o Trivy varre cada imagem e falha com vulnerabilidade crítica ou alta que tenha correção. Os pull requests rodam a mesma varredura sem publicar, e o relatório completo fica na aba Security do repositório. O Dependabot mantém atualizados o digest da imagem base, as GitHub Actions e os pacotes npm.
 
-## Architecture decisions
+## Decisões de arquitetura
 
-See [docs/adr](docs/adr).
+Veja [docs/adr](docs/adr).
 
-## License
+## Licença
 
 [MIT](LICENSE)
