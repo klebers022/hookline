@@ -37,7 +37,7 @@ A fase 7 sai do caminho. A fase 8 (caos, runbooks, backup e portfólio) foi feit
 | Domínio e TLS (DuckDNS, Let's Encrypt, cert-manager) | **Não feito:** precisa de um endereço público.                                                                                               |
 | Sealed Secrets                                       | **Não feito:** sem cluster duradouro, os segredos são gerados a cada `k8s:up` e nunca entram no Git.                                         |
 | Alertmanager e avisos (e-mail, Telegram)             | **Não feito:** os alertas aparecem no Prometheus e no Grafana.                                                                               |
-| Bump de versão automático (GitHub App)               | **Não feito:** o `pnpm k8s:bump` abre a troca de versão por PR, à mão.                                                                       |
+| Bump de versão automático (GitHub App)               | **Não feito:** o `pnpm k8s:bump` grava a troca de versão, e o PR é aberto à mão.                                                             |
 | Números de capacidade em hardware real               | **Medidos no notebook** (`docs/capacity.md`), com a observabilidade e o k6 na mesma máquina.                                                 |
 
 ## Alternativas consideradas
