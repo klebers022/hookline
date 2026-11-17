@@ -400,7 +400,18 @@ const [[expired]] = sql(`
   JOIN events e ON e.id = d.event_id
   WHERE e.project_id = '${projectId}' AND a.error_code = 'DEADLINE_EXCEEDED'`);
 const received = await request('/stats');
-const deadAdded = deadLetters() - deadBefore;
+// RabbitMQ refreshes a quorum queue's message count every few seconds, so a
+// delivery that died just before the end may not be counted yet. Wait for it,
+// for up to 30 s, before checking.
+let deadAdded = deadLetters() - deadBefore;
+for (
+  let waited = 0;
+  deadAdded < Number(rare) && waited < 30_000;
+  waited += 2_000
+) {
+  await sleep(2_000);
+  deadAdded = deadLetters() - deadBefore;
+}
 
 const checks = [];
 function check(description, ok, detail) {
