@@ -213,7 +213,7 @@ services:
     depends_on: [loki]
 
   grafana:
-    image: grafana/grafana:13.3.0
+    image: grafana/grafana:13.3.1
     profiles: [observability]
     environment:
       # Local only: anyone who opens the page is an admin, without a login.
