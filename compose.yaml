@@ -201,7 +201,7 @@ services:
   # Collects the app containers' logs through the Docker socket (read-only)
   # and pushes them to Loki.
   alloy:
-    image: grafana/alloy:v1.21.3
+    image: grafana/alloy:v1.22.0
     profiles: [observability]
     command:
       - run
