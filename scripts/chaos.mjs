@@ -32,7 +32,7 @@ const URL_BASE = process.env.HOOKLINE_URL ?? 'http://127.0.0.1:8088';
 // through the same load balancer as the browser.
 const API_IN_NETWORK = 'http://k3d-hookline-serverlb';
 const NETWORK = 'k3d-hookline';
-const K6_IMAGE = 'grafana/k6:2.3.0';
+const K6_IMAGE = 'grafana/k6:2.4.0';
 const RECEIVER_IN_CLUSTER = 'http://test-receiver:4000/hooks';
 
 // The three destinations, each a path of the test receiver.
