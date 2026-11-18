@@ -35,7 +35,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: loki
-          image: grafana/loki:3.6.20
+          image: grafana/loki:3.7.10
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
