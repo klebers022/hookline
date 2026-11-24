@@ -8,9 +8,9 @@
     "!dist/**/*.d.ts"
   ],
   "dependencies": {
-    "@fastify/rate-limit": "^11.2.2",
-    "@fastify/swagger": "^9.9.4",
-    "@fastify/swagger-ui": "^6.1.3",
+    "@fastify/rate-limit": "^11.3.0",
+    "@fastify/swagger": "^9.9.5",
+    "@fastify/swagger-ui": "^6.1.5",
     "@fastify/type-provider-typebox": "^6.3.0",
     "@hookline/shared": "workspace:*",
     "fastify": "^5.12.8",
